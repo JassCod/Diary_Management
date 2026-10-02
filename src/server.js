@@ -565,6 +565,29 @@ function createApp(db, { scanner = defaultScanner } = {}) {
     return { ok: true };
   });
 
+  // Remove test data. 'entries' keeps people, feed items and settings;
+  // 'all' also removes people and feed items. Needs the owner password.
+  route('POST', '/api/reset', 'admin', ({ body }) => {
+    const scope = oneOf(body.scope, ['entries', 'all'], 'what to delete');
+    if (!checkSecret(String(body.password || ''), D.getSettings(db).admin_pass_hash)) throw bad('Current password is wrong');
+    const tables = ['milk_collections', 'milk_sales', 'feed_sales', 'feed_purchases', 'payments', 'expenses'];
+    db.exec('BEGIN');
+    try {
+      for (const tb of tables) db.exec(`DELETE FROM ${tb}`);
+      if (scope === 'all') {
+        db.exec("DELETE FROM sessions WHERE role = 'customer'");
+        db.exec('DELETE FROM parties');
+        db.exec('DELETE FROM feed_items');
+        for (const k of ['opening_cash', 'opening_bank', 'opening_stock_cow', 'opening_stock_buffalo']) D.setSetting(db, k, '0');
+      }
+      db.exec('COMMIT');
+    } catch (e) {
+      db.exec('ROLLBACK');
+      throw e;
+    }
+    return { ok: true };
+  });
+
   route('GET', '/api/backup', 'admin', () => {
     const tables = ['settings', 'parties', 'milk_collections', 'milk_sales', 'feed_items', 'feed_purchases', 'feed_sales', 'payments', 'expenses'];
     const out = { exported_at: new Date().toISOString() };

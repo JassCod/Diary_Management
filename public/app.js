@@ -1650,6 +1650,11 @@ async function pageSettings() {
           <p class="sub">${t('Download all your records as a file. Keep it safe (e.g. on Google Drive) every week.')}</p>
           <button class="btn ghost" id="backup">⬇️ ${t('Download backup')}</button>
         </div>
+        <div class="card danger-card">
+          <h2>🗑 ${t('Delete test data')}</h2>
+          <p class="sub">${t('Used fake entries to try the app? Remove them here before you start real work.')}</p>
+          <button class="btn danger" id="reset">${t('Delete test data…')}</button>
+        </div>
       </div>
     </div>`;
   onSubmit($('#fs'), async (d) => {
@@ -1660,6 +1665,33 @@ async function pageSettings() {
   });
   onSubmit($('#fpw'), async (d) => { await api('PUT', '/api/settings/password', d); toast('Password changed'); $('#fpw').reset(); });
   $('#copy').onclick = async () => { try { await navigator.clipboard.writeText(location.origin); toast('Link copied'); } catch { toast(location.origin); } };
+  $('#reset').onclick = () => {
+    const m = openModal(t('Delete test data'), `
+      <form id="freset">
+        <div class="grid">${seg('scope', [['entries', t('Only entries')], ['all', t('Everything')]], 'entries')}</div>
+        <p id="rhelp" class="sub"></p>
+        <div class="alert">${t('This cannot be undone. Download a backup first if you are not sure.')}</div>
+        <div class="grid">${field(t('Owner password'), '<input name="password" type="password" required autocomplete="current-password">')}</div>
+        <div class="row-actions"><button class="btn danger" type="submit">🗑 ${t('Delete now')}</button>
+          <button class="btn plain" type="button" data-close>${t('Cancel')}</button></div>
+      </form>`);
+    $$('[data-close]', m).forEach((b) => { b.onclick = () => m.close(); });
+    const f = $('#freset', m);
+    const help = () => {
+      $('#rhelp', m).textContent = f.scope.value === 'all'
+        ? t('Deletes all entries, all people and all feed items. Your dairy name, rates and password stay.')
+        : t('Deletes all milk, milk-out, feed sales, feed purchases, payments and expenses. Your people, feed items and rates stay.');
+    };
+    $$('input[name=scope]', f).forEach((x) => x.addEventListener('change', help));
+    help();
+    onSubmit(f, async (d) => {
+      await api('POST', '/api/reset', d);
+      m.close();
+      S.parties = []; S.items = [];
+      toast('Test data deleted');
+      location.hash = '#/home';
+    });
+  };
   $('#backup').onclick = async () => {
     try {
       const data = await api('GET', '/api/backup');

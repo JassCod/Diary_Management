@@ -198,3 +198,18 @@ test('owner can edit entries and balances follow', async () => {
   const c = await ok('POST', '/api/login/customer', { phone: '9876543210', pin: '1234' });
   assert.equal((await call('PUT', `/api/expenses/${e.id}`, { date: '2026-10-05', kind: 'house', category: 'X', amount: 1, mode: 'cash' }, c.token)).status, 403);
 });
+
+test('owner can delete test data', async () => {
+  assert.equal((await call('POST', '/api/reset', { scope: 'entries', password: 'wrong' }, admin)).status, 400);
+  const before = (await as('GET', '/api/parties')).length;
+  await as('POST', '/api/reset', { scope: 'entries', password: 'secret1' });
+  assert.equal((await as('GET', '/api/milk/collections')).length, 0);
+  assert.equal((await as('GET', '/api/payments')).length, 0);
+  assert.equal((await as('GET', '/api/expenses')).length, 0);
+  assert.equal((await as('GET', '/api/parties')).length, before);
+  assert.ok((await as('GET', '/api/parties')).every((p) => p.balance === p.opening_balance));
+  await as('POST', '/api/reset', { scope: 'all', password: 'secret1' });
+  assert.equal((await as('GET', '/api/parties')).length, 0);
+  assert.equal((await as('GET', '/api/feed/items')).length, 0);
+  assert.equal((await as('GET', '/api/status')).dairy_name ?? 'x', 'Test Dairy');
+});

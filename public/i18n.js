@@ -190,6 +190,15 @@ const PA = {
 
   'Edit entry': 'ਐਂਟਰੀ ਬਦਲੋ', 'Save changes': 'ਬਦਲਾਅ ਸੇਵ ਕਰੋ',
 
+  'Delete test data': 'ਟੈਸਟ ਡਾਟਾ ਮਿਟਾਓ', 'Delete test data…': 'ਟੈਸਟ ਡਾਟਾ ਮਿਟਾਓ…',
+  'Used fake entries to try the app? Remove them here before you start real work.': 'ਐਪ ਅਜ਼ਮਾਉਣ ਲਈ ਨਕਲੀ ਐਂਟਰੀਆਂ ਪਾਈਆਂ ਸਨ? ਅਸਲ ਕੰਮ ਸ਼ੁਰੂ ਕਰਨ ਤੋਂ ਪਹਿਲਾਂ ਇੱਥੋਂ ਮਿਟਾਓ।',
+  'Only entries': 'ਸਿਰਫ਼ ਐਂਟਰੀਆਂ', 'Everything': 'ਸਭ ਕੁਝ',
+  'This cannot be undone. Download a backup first if you are not sure.': 'ਇਹ ਵਾਪਸ ਨਹੀਂ ਹੋਵੇਗਾ। ਜੇ ਪੱਕਾ ਨਹੀਂ ਤਾਂ ਪਹਿਲਾਂ ਬੈਕਅੱਪ ਡਾਊਨਲੋਡ ਕਰੋ।',
+  'Owner password': 'ਮਾਲਕ ਦਾ ਪਾਸਵਰਡ', 'Delete now': 'ਹੁਣੇ ਮਿਟਾਓ', 'Test data deleted': 'ਟੈਸਟ ਡਾਟਾ ਮਿਟ ਗਿਆ',
+  'Deletes all entries, all people and all feed items. Your dairy name, rates and password stay.': 'ਸਾਰੀਆਂ ਐਂਟਰੀਆਂ, ਸਾਰੇ ਗਾਹਕ ਅਤੇ ਸਾਰੀਆਂ ਫੀਡ ਚੀਜ਼ਾਂ ਮਿਟ ਜਾਣਗੀਆਂ। ਡੇਅਰੀ ਦਾ ਨਾਮ, ਰੇਟ ਅਤੇ ਪਾਸਵਰਡ ਰਹਿਣਗੇ।',
+  'Deletes all milk, milk-out, feed sales, feed purchases, payments and expenses. Your people, feed items and rates stay.': 'ਸਾਰਾ ਦੁੱਧ, ਦੁੱਧ ਵਿਕਰੀ, ਫੀਡ ਵਿਕਰੀ, ਫੀਡ ਖਰੀਦ, ਭੁਗਤਾਨ ਅਤੇ ਖਰਚੇ ਮਿਟ ਜਾਣਗੇ। ਗਾਹਕ, ਫੀਡ ਚੀਜ਼ਾਂ ਅਤੇ ਰੇਟ ਰਹਿਣਗੇ।',
+  'what to delete': 'ਕੀ ਮਿਟਾਉਣਾ ਹੈ',
+
   // server messages
   'Account not found': 'ਖਾਤਾ ਨਹੀਂ ਮਿਲਿਆ', 'Already set up': 'ਪਹਿਲਾਂ ਹੀ ਸੈੱਟ ਹੈ', 'Current password is wrong': 'ਮੌਜੂਦਾ ਪਾਸਵਰਡ ਗਲਤ ਹੈ',
   'Customer not found': 'ਗਾਹਕ ਨਹੀਂ ਮਿਲਿਆ', 'Entry not found': 'ਐਂਟਰੀ ਨਹੀਂ ਮਿਲੀ', 'Feed item not found': 'ਫੀਡ ਚੀਜ਼ ਨਹੀਂ ਮਿਲੀ',
