@@ -1,0 +1,14 @@
+{
+  "name": "milk-dairy",
+  "version": "1.0.0",
+  "description": "Simple milk dairy management: milk collection, sales, cold storage, feed, khata, expenses and a customer portal.",
+  "main": "src/server.js",
+  "private": true,
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning src/server.js",
+    "test": "node --disable-warning=ExperimentalWarning --test test/*.test.js"
+  }
+}
