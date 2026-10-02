@@ -11,14 +11,16 @@ A simple, mobile-friendly app for running a village milk dairy (collection centr
 - **Expenses**: house expenses and dairy business expenses, kept separate, each with cash or online.
 - **Where is my money**: cash in hand, online/bank balance, money to receive, money to pay.
 - **Reports**: profit from milk and feed, business expenses, house expenses, savings, cash vs online, and day-by-day figures for any dates.
+- **Milk entry from a photo**: photograph your milk register or receipt. The app reads each line (farmer code or name, cow or buffalo, litres, fat), matches it to your farmers and shows it for checking, then saves everything with one tap. Needs an Anthropic API key (see below).
 - **Punjabi or English**: switch the language from the top bar, the login page or Settings.
 - **Customer portal**: farmers and buyers log in on their own phone with their **mobile number and a PIN** and can only see their own milk, feed, payments and balance.
 
 ## Run it
 
-You only need **Node.js 22.13 or newer** (https://nodejs.org). No other packages are required.
+You need **Node.js 22.13 or newer** (https://nodejs.org).
 
 ```bash
+npm install
 npm start
 # open http://localhost:3000
 ```
@@ -38,6 +40,7 @@ Options (environment variables):
 | `DB_PATH` | `./data/dairy.db` | Where the data file is saved |
 | `ADMIN_PASSWORD` | – | Sets the owner password on first start (use this on a public server) |
 | `DAIRY_NAME` | – | Dairy name used together with `ADMIN_PASSWORD` |
+| `ANTHROPIC_API_KEY` | – | Turns on **Milk → From photo** (reading receipts with Claude) |
 
 All data is kept in one SQLite file (`data/dairy.db`). Copy that file to make a full backup. You can also use **Settings → Download backup**, which saves your records as a JSON file.
 
@@ -64,6 +67,14 @@ To let customers open the app on their own phones, it must run on an internet se
 3. Enter `ADMIN_PASSWORD` and `DAIRY_NAME` when it asks, then deploy.
 
 Don't use free plans that have no permanent disk: they delete your data when they restart.
+
+### Turning on "Milk entry from photo"
+
+1. Create an account at https://console.anthropic.com, add some credit, and create an API key.
+2. Add it to your hosting **Variables** as `ANTHROPIC_API_KEY` (or set it in your terminal before `npm start`), then restart the app.
+3. Open **Milk → 📷 From photo**, take a photo, tap **Read photo**, check the yellow lines, and tap **Save all**.
+
+Each photo costs a few rupees of API usage, depending on how long the list is. Tips: use good light, keep the whole page flat and in the frame, and give every farmer the same code number in the app that you write on paper. The app never saves anything until you press **Save all**.
 
 ### After it is online
 

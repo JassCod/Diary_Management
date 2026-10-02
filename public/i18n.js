@@ -166,6 +166,28 @@ const PA = {
   'Milk amount': 'ਦੁੱਧ ਦੀ ਰਕਮ', 'Feed (cut)': 'ਫੀਡ (ਕੱਟੀ)', 'Paid to you': 'ਤੁਹਾਨੂੰ ਦਿੱਤੇ', 'Daily milk': 'ਰੋਜ਼ਾਨਾ ਦੁੱਧ',
   'Full account': 'ਪੂਰਾ ਖਾਤਾ',
 
+  // milk from photo
+  'From photo': 'ਫੋਟੋ ਤੋਂ', 'Milk entry from photo': 'ਫੋਟੋ ਤੋਂ ਦੁੱਧ ਐਂਟਰੀ',
+  'Take a photo of your milk register or receipt and the app fills in all entries for you to check.': 'ਆਪਣੇ ਦੁੱਧ ਰਜਿਸਟਰ ਜਾਂ ਪਰਚੀ ਦੀ ਫੋਟੋ ਖਿੱਚੋ, ਐਪ ਸਾਰੀਆਂ ਐਂਟਰੀਆਂ ਭਰ ਦੇਵੇਗੀ, ਤੁਸੀਂ ਸਿਰਫ਼ ਚੈੱਕ ਕਰਨੀਆਂ ਹਨ।',
+  'Photo reading is not switched on yet. Add an Anthropic API key as ANTHROPIC_API_KEY in your server settings (see README), then restart.': 'ਫੋਟੋ ਪੜ੍ਹਨਾ ਅਜੇ ਚਾਲੂ ਨਹੀਂ ਹੈ। ਸਰਵਰ ਸੈਟਿੰਗ ਵਿੱਚ ANTHROPIC_API_KEY ਪਾਓ (README ਦੇਖੋ), ਫਿਰ ਦੁਬਾਰਾ ਚਲਾਓ।',
+  'Take a clear photo of the whole page in good light. You will check every line before saving.': 'ਚੰਗੀ ਰੋਸ਼ਨੀ ਵਿੱਚ ਪੂਰੇ ਪੰਨੇ ਦੀ ਸਾਫ਼ ਫੋਟੋ ਖਿੱਚੋ। ਸੇਵ ਕਰਨ ਤੋਂ ਪਹਿਲਾਂ ਤੁਸੀਂ ਹਰ ਲਾਈਨ ਚੈੱਕ ਕਰੋਗੇ।',
+  'Take / choose photo': 'ਫੋਟੋ ਖਿੱਚੋ / ਚੁਣੋ', 'Read photo': 'ਫੋਟੋ ਪੜ੍ਹੋ', 'Check and save': 'ਚੈੱਕ ਕਰੋ ਤੇ ਸੇਵ ਕਰੋ',
+  'Lines read from the photo will show here.': 'ਫੋਟੋ ਵਿੱਚੋਂ ਪੜ੍ਹੀਆਂ ਲਾਈਨਾਂ ਇੱਥੇ ਦਿਖਣਗੀਆਂ।',
+  'Reading the photo… this can take up to a minute.': 'ਫੋਟੋ ਪੜ੍ਹੀ ਜਾ ਰਹੀ ਹੈ… ਇੱਕ ਮਿੰਟ ਤੱਕ ਲੱਗ ਸਕਦਾ ਹੈ।',
+  'Found {n} lines. Please check the yellow ones.': '{n} ਲਾਈਨਾਂ ਮਿਲੀਆਂ। ਪੀਲੀਆਂ ਲਾਈਨਾਂ ਧਿਆਨ ਨਾਲ ਚੈੱਕ ਕਰੋ।',
+  'No milk lines found. Try a clearer photo.': 'ਕੋਈ ਦੁੱਧ ਲਾਈਨ ਨਹੀਂ ਮਿਲੀ। ਹੋਰ ਸਾਫ਼ ਫੋਟੋ ਖਿੱਚੋ।',
+  'On paper:': 'ਕਾਗਜ਼ ਤੇ:', 'on paper': 'ਕਾਗਜ਼ ਤੇ', 'Please check': 'ਚੈੱਕ ਕਰੋ', 'Choose farmer': 'ਕਿਸਾਨ ਚੁਣੋ',
+  'Save all {n} entries': 'ਸਾਰੀਆਂ {n} ਐਂਟਰੀਆਂ ਸੇਵ ਕਰੋ', '{n} entries saved': '{n} ਐਂਟਰੀਆਂ ਸੇਵ ਹੋਈਆਂ',
+  'Line {n}: please choose the farmer': 'ਲਾਈਨ {n}: ਕਿਸਾਨ ਚੁਣੋ', 'Please choose a photo': 'ਫੋਟੋ ਚੁਣੋ',
+  'Nothing to save': 'ਸੇਵ ਕਰਨ ਲਈ ਕੁਝ ਨਹੀਂ', 'Too many lines at once': 'ਇੱਕ ਵਾਰ ਵਿੱਚ ਬਹੁਤ ਲਾਈਨਾਂ',
+  'Photo reading is not set up. Add ANTHROPIC_API_KEY to the server settings.': 'ਫੋਟੋ ਪੜ੍ਹਨਾ ਸੈੱਟ ਨਹੀਂ ਹੈ। ਸਰਵਰ ਸੈਟਿੰਗ ਵਿੱਚ ANTHROPIC_API_KEY ਪਾਓ।',
+  'The photo reading key (ANTHROPIC_API_KEY) is wrong.': 'ਫੋਟੋ ਪੜ੍ਹਨ ਵਾਲੀ ਕੁੰਜੀ (ANTHROPIC_API_KEY) ਗਲਤ ਹੈ।',
+  'Photo reading is busy. Please try again in a minute.': 'ਫੋਟੋ ਪੜ੍ਹਨਾ ਰੁੱਝਿਆ ਹੈ। ਇੱਕ ਮਿੰਟ ਬਾਅਦ ਕੋਸ਼ਿਸ਼ ਕਰੋ।',
+  'Photo reading failed. Please try again.': 'ਫੋਟੋ ਨਹੀਂ ਪੜ੍ਹੀ ਗਈ। ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ।',
+  'The photo could not be read. Please try another photo.': 'ਫੋਟੋ ਨਹੀਂ ਪੜ੍ਹੀ ਗਈ। ਕੋਈ ਹੋਰ ਫੋਟੋ ਖਿੱਚੋ।',
+  'The list is too long for one photo. Please photograph half the page at a time.': 'ਇੱਕ ਫੋਟੋ ਲਈ ਸੂਚੀ ਬਹੁਤ ਲੰਮੀ ਹੈ। ਅੱਧਾ-ਅੱਧਾ ਪੰਨਾ ਖਿੱਚੋ।',
+  'a photo': 'ਫੋਟੋ',
+
   // server messages
   'Account not found': 'ਖਾਤਾ ਨਹੀਂ ਮਿਲਿਆ', 'Already set up': 'ਪਹਿਲਾਂ ਹੀ ਸੈੱਟ ਹੈ', 'Current password is wrong': 'ਮੌਜੂਦਾ ਪਾਸਵਰਡ ਗਲਤ ਹੈ',
   'Customer not found': 'ਗਾਹਕ ਨਹੀਂ ਮਿਲਿਆ', 'Entry not found': 'ਐਂਟਰੀ ਨਹੀਂ ਮਿਲੀ', 'Feed item not found': 'ਫੀਡ ਚੀਜ਼ ਨਹੀਂ ਮਿਲੀ',
@@ -214,6 +236,8 @@ function t(s, vars) {
 function tError(msg) {
   if (getLang() !== 'pa') return msg;
   if (PA[msg]) return PA[msg];
+  const line = /^Line (\d+): (.+)$/.exec(msg);
+  if (line) return `ਲਾਈਨ ${line[1]}: ${tError(line[2])}`;
   let m = /^Please enter a valid (.+)$/.exec(msg);
   if (m) return `ਸਹੀ ${t(m[1])} ਭਰੋ`;
   m = /^Please choose a valid (.+)$/.exec(msg);

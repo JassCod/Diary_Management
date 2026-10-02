@@ -518,10 +518,12 @@ async function pageMilk(tab = 'collect') {
   const main = shell('milk', 'Milk');
   main.innerHTML = `<div class="tabs">
       <a href="#/milk/collect" class="${tab === 'collect' ? 'on' : ''}">🥛 ${t('Buy from farmers')}</a>
+      <a href="#/milk/scan" class="${tab === 'scan' ? 'on' : ''}">📷 ${t('From photo')}</a>
       <a href="#/milk/out" class="${tab === 'out' ? 'on' : ''}">🚚 ${t('Milk out / Sale')}</a>
     </div><div id="milkbody"></div>`;
   await loadParties();
   if (tab === 'out') return milkOut($('#milkbody'));
+  if (tab === 'scan') return milkScan($('#milkbody'));
   return milkCollect($('#milkbody'));
 }
 
@@ -615,6 +617,155 @@ function milkCollect(root) {
   });
   updRate();
   list();
+}
+
+// Shrink a phone photo before upload (keeps handwriting readable, saves data).
+function photoToJpeg(file, maxSide = 2000) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const k = Math.min(1, maxSide / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      resolve(c.toDataURL('image/jpeg', 0.85));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Please choose a photo')); };
+    img.src = url;
+  });
+}
+
+function milkScan(root) {
+  if (!S.status.scan_enabled) {
+    root.innerHTML = `<div class="card"><h2>📷 ${t('Milk entry from photo')}</h2>
+      <p>${t('Take a photo of your milk register or receipt and the app fills in all entries for you to check.')}</p>
+      <div class="alert">${t('Photo reading is not switched on yet. Add an Anthropic API key as ANTHROPIC_API_KEY in your server settings (see README), then restart.')}</div></div>`;
+    return;
+  }
+  const farmers = S.parties.filter((p) => p.active).sort((a, b) => (a.kind === 'farmer' ? 0 : 1) - (b.kind === 'farmer' ? 0 : 1) || String(a.code || '').localeCompare(String(b.code || ''), undefined, { numeric: true }) || a.name.localeCompare(b.name));
+  let rows = [];
+  let photo = null;
+  root.innerHTML = `
+  <div class="cols">
+    <form class="card" id="f">
+      <h2>📷 ${t('Milk entry from photo')}</h2>
+      <p class="sub" style="margin-top:0">${t('Take a clear photo of the whole page in good light. You will check every line before saving.')}</p>
+      <div class="grid date-shift">
+        ${field(t('Date'), `<input type="date" name="date" value="${sessionStorage.getItem('mc_date') || today()}" required>`)}
+        ${field(t('Time'), seg('shift', [['morning', SHIFT('morning')], ['evening', SHIFT('evening')]], sessionStorage.getItem('mc_shift') || defaultShift()))}
+      </div>
+      <label class="btn ghost block" style="margin-bottom:12px">📷 ${t('Take / choose photo')}<input type="file" id="file" accept="image/*" capture="environment" hidden></label>
+      <img id="preview" alt="" hidden style="width:100%;max-height:340px;object-fit:contain;border-radius:12px;margin-bottom:12px;background:var(--bg)">
+      <button class="btn block" type="submit" id="read" disabled>🔍 ${t('Read photo')}</button>
+      <p class="sub" id="status"></p>
+    </form>
+    <div class="card" id="review"><h2>${t('Check and save')}</h2>${empty('Lines read from the photo will show here.')}</div>
+  </div>`;
+  const f = $('#f', root);
+  const review = $('#review', root);
+
+  $('#file', root).addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      photo = await photoToJpeg(file);
+      const img = $('#preview', root);
+      img.src = photo; img.hidden = false;
+      $('#read', root).disabled = false;
+    } catch (err) { toast(err.message, true); }
+  });
+
+  onSubmit(f, async () => {
+    if (!photo) throw new Error('Please choose a photo');
+    $('#status', root).textContent = t('Reading the photo… this can take up to a minute.');
+    try {
+      const res = await api('POST', '/api/milk/scan', { image: photo.split(',')[1], media_type: 'image/jpeg' });
+      if (res.date) f.date.value = res.date;
+      if (res.shift) f.shift.value = res.shift;
+      rows = res.rows.map((r) => ({
+        ...r,
+        milk_type: r.milk_type === 'unknown' ? (r.fat > 5.5 ? 'buffalo' : 'cow') : r.milk_type,
+        unclear: r.unclear || r.milk_type === 'unknown' || !r.party_id,
+        fat: r.fat || '',
+        rate: rateFor(r.milk_type === 'buffalo' || (r.milk_type === 'unknown' && r.fat > 5.5) ? 'buffalo' : 'cow', r.fat) || '',
+        keep: true,
+      }));
+      $('#status', root).textContent = rows.length
+        ? t('Found {n} lines. Please check the yellow ones.', { n: rows.length })
+        : t('No milk lines found. Try a clearer photo.');
+      renderReview();
+    } catch (err) {
+      $('#status', root).textContent = '';
+      throw err;
+    }
+  });
+
+  function renderReview() {
+    const kept = rows.filter((r) => r.keep);
+    const totQ = kept.reduce((a, r) => a + (Number(r.qty) || 0), 0);
+    const totA = kept.reduce((a, r) => a + r2((Number(r.qty) || 0) * (Number(r.rate) || 0)), 0);
+    review.innerHTML = `<h2>${t('Check and save')}</h2>
+      ${rows.length ? `<div class="list">${rows.map((r, i) => r.keep ? `
+        <div class="scan-row ${r.unclear ? 'warn' : ''}" data-i="${i}">
+          <div class="scan-top">
+            <small>${t('On paper:')} <b>${esc([r.code, r.name].filter(Boolean).join(' · ') || '?')}</b>${r.unclear ? ` <span class="badge warn">${t('Please check')}</span>` : ''}</small>
+            ${delBtnRow(i)}
+          </div>
+          <select data-k="party_id"><option value="">— ${t('Choose farmer')} —</option>${farmers.map((p) => `<option value="${p.id}" ${p.id === r.party_id ? 'selected' : ''}>${esc(pLabel(p))}</option>`).join('')}</select>
+          <div class="scan-grid">
+            ${field(t('Milk type'), `<select data-k="milk_type"><option value="cow" ${r.milk_type === 'cow' ? 'selected' : ''}>🐄 ${t('Cow')}</option><option value="buffalo" ${r.milk_type === 'buffalo' ? 'selected' : ''}>🐃 ${t('Buffalo')}</option></select>`)}
+            ${field(t('Litres'), `<input data-k="qty" type="number" step="0.01" min="0" inputmode="decimal" value="${r.qty}">`)}
+            ${field(t('Fat'), `<input data-k="fat" type="number" step="0.1" min="0" inputmode="decimal" value="${r.fat}">`)}
+            ${field(t('Rate ₹/L'), `<input data-k="rate" type="number" step="0.01" min="0" inputmode="decimal" value="${r.rate}">`)}
+          </div>
+          <div class="sub">${t('Amount')}: <b>${money(r2((Number(r.qty) || 0) * (Number(r.rate) || 0)))}</b>${r.amount ? ` · ${t('on paper')} ${money(r.amount)}` : ''}</div>
+        </div>` : '').join('')}</div>
+        <div class="amount-preview" style="margin-top:12px"><span>${kept.length} · ${qty(totQ)} ${t('L')}</span><b>${money(totA)}</b></div>
+        <button class="btn block" id="saveall" ${kept.length ? '' : 'disabled'}>✓ ${t('Save all {n} entries', { n: kept.length })}</button>`
+      : empty('Lines read from the photo will show here.')}`;
+    const btn = $('#saveall', review);
+    if (btn) btn.onclick = saveAll;
+  }
+  const delBtnRow = (i) => `<button type="button" class="icon-btn" data-drop="${i}" aria-label="${t('Delete')}">✕</button>`;
+
+  review.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-drop]');
+    if (b) { rows[Number(b.dataset.drop)].keep = false; renderReview(); }
+  });
+  review.addEventListener('change', (e) => {
+    const el = e.target.closest('[data-k]');
+    if (!el) return;
+    const r = rows[Number(el.closest('[data-i]').dataset.i)];
+    const k = el.dataset.k;
+    r[k] = k === 'party_id' ? Number(el.value) || null : el.value;
+    if (k === 'party_id' && r.party_id) r.unclear = false;
+    if (k === 'rate') r.rateTouched = true;
+    if ((k === 'fat' || k === 'milk_type') && !r.rateTouched) r.rate = rateFor(r.milk_type, r.fat) || '';
+    renderReview();
+  });
+
+  async function saveAll() {
+    const kept = rows.filter((r) => r.keep);
+    const missing = kept.findIndex((r) => !r.party_id);
+    if (missing >= 0) { toast(t('Line {n}: please choose the farmer', { n: missing + 1 }), true); return; }
+    const btn = $('#saveall', review);
+    btn.disabled = true;
+    try {
+      const d = formData(f);
+      const res = await api('POST', '/api/milk/collections/bulk', {
+        date: d.date, shift: d.shift,
+        rows: kept.map((r) => ({ party_id: r.party_id, milk_type: r.milk_type, qty: r.qty, fat: r.fat, snf: r.snf || '', rate: r.rate })),
+      });
+      sessionStorage.setItem('mc_date', d.date); sessionStorage.setItem('mc_shift', d.shift);
+      toast(t('{n} entries saved', { n: res.saved }));
+      location.hash = '#/milk/collect';
+    } catch (err) {
+      toast(err.message, true);
+      btn.disabled = false;
+    }
+  }
 }
 
 function milkOut(root) {

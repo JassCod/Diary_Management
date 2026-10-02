@@ -7,6 +7,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const D = require('./db');
+const defaultScanner = require('./scan');
 
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 const SESSION_DAYS = 60;
@@ -17,6 +18,20 @@ class HttpError extends Error {
   constructor(status, message) { super(message); this.status = status; }
 }
 const bad = (msg) => new HttpError(400, msg);
+
+// Turn a failure from the photo reader into a message the owner can act on.
+function scanError(e) {
+  let Anthropic = null;
+  try { Anthropic = require('@anthropic-ai/sdk'); } catch { /* not installed */ }
+  if (Anthropic && e instanceof Anthropic.AuthenticationError) return new HttpError(502, 'The photo reading key (ANTHROPIC_API_KEY) is wrong.');
+  if (Anthropic && e instanceof Anthropic.RateLimitError) return new HttpError(503, 'Photo reading is busy. Please try again in a minute.');
+  if (Anthropic && e instanceof Anthropic.APIError) {
+    console.error('Photo reading failed:', e.status, e.message);
+    return new HttpError(502, 'Photo reading failed. Please try again.');
+  }
+  if (e instanceof HttpError) return e;
+  return new HttpError(422, e.message || 'The photo could not be read. Please try another photo.');
+}
 
 function hashSecret(secret) {
   const salt = crypto.randomBytes(16).toString('hex');
@@ -77,7 +92,7 @@ function loginFailed(key) {
 
 // ---------- app ----------
 
-function createApp(db) {
+function createApp(db, { scanner = defaultScanner } = {}) {
   const routes = [];
   const route = (method, pattern, role, handler) => {
     const keys = [];
@@ -120,7 +135,7 @@ function createApp(db) {
 
   route('GET', '/api/status', null, () => {
     const s = D.getSettings(db);
-    return { setup_needed: !s.admin_pass_hash, dairy_name: s.dairy_name, dairy_phone: s.dairy_phone };
+    return { setup_needed: !s.admin_pass_hash, dairy_name: s.dairy_name, dairy_phone: s.dairy_phone, scan_enabled: scanner.enabled() };
   });
 
   route('POST', '/api/setup', null, ({ body }) => {
@@ -289,6 +304,72 @@ function createApp(db) {
     return db.prepare('SELECT * FROM milk_collections WHERE id = ?').get(r.lastInsertRowid);
   });
   route('DELETE', '/api/milk/collections/:id', 'admin', del('milk_collections'));
+
+  // Save many entries at once (used after reading a photo). All or nothing.
+  route('POST', '/api/milk/collections/bulk', 'admin', ({ body }) => {
+    const d = date(body.date);
+    const shift = oneOf(body.shift, ['morning', 'evening'], 'morning or evening');
+    if (!Array.isArray(body.rows) || !body.rows.length) throw bad('Nothing to save');
+    if (body.rows.length > 500) throw bad('Too many lines at once');
+    const rows = body.rows.map((r, i) => {
+      try {
+        const q = num(r.qty, 'quantity (litres)');
+        const rate = num(r.rate, 'rate');
+        return [d, shift, requireParty(r.party_id), oneOf(r.milk_type, ['cow', 'buffalo'], 'cow or buffalo'),
+          q, num(r.fat, 'fat', { optional: true }) || null, num(r.snf, 'SNF', { optional: true }) || null, rate, D.round2(q * rate)];
+      } catch (e) {
+        throw bad(`Line ${i + 1}: ${e.message}`);
+      }
+    });
+    const ins = db.prepare(`INSERT INTO milk_collections (date, shift, party_id, milk_type, qty, fat, snf, rate, amount)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    db.exec('BEGIN');
+    try {
+      for (const v of rows) ins.run(...v);
+      db.exec('COMMIT');
+    } catch (e) {
+      db.exec('ROLLBACK');
+      throw e;
+    }
+    return { saved: rows.length };
+  });
+
+  // Read a photo of a milk sheet / receipt and match each line to a farmer.
+  route('POST', '/api/milk/scan', 'admin', async ({ body }) => {
+    if (!scanner.enabled()) throw new HttpError(503, 'Photo reading is not set up. Add ANTHROPIC_API_KEY to the server settings.');
+    const mediaType = oneOf(body.media_type, ['image/jpeg', 'image/png', 'image/webp', 'image/gif'], 'a photo');
+    const image = String(body.image || '');
+    if (!image || !/^[A-Za-z0-9+/=]+$/.test(image)) throw bad('Please choose a photo');
+    const parties = db.prepare("SELECT id, code, name, village, kind FROM parties WHERE active = 1").all();
+    let result;
+    try {
+      result = await scanner.readMilkSheet({ imageBase64: image, mediaType, farmers: parties.filter((p) => p.kind === 'farmer') });
+    } catch (e) {
+      throw scanError(e);
+    }
+    const norm = (x) => String(x || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    const normCode = (x) => norm(x).replace(/^0+(?=\d)/, '');
+    const match = (row) => {
+      const code = normCode(row.code);
+      if (code) {
+        const byCode = parties.filter((p) => normCode(p.code) === code);
+        if (byCode.length === 1) return { party_id: byCode[0].id, match: 'code' };
+      }
+      const name = norm(row.name);
+      if (name) {
+        const exact = parties.filter((p) => norm(p.name) === name);
+        if (exact.length === 1) return { party_id: exact[0].id, match: 'name' };
+        const part = parties.filter((p) => norm(p.name).includes(name) || name.includes(norm(p.name)));
+        if (part.length === 1) return { party_id: part[0].id, match: 'name' };
+      }
+      return { party_id: null, match: null };
+    };
+    return {
+      date: DATE_RE.test(result.date_written || '') ? result.date_written : null,
+      shift: ['morning', 'evening'].includes(result.shift_written) ? result.shift_written : null,
+      rows: (result.rows || []).filter((r) => Number(r.qty) > 0).map((r) => ({ ...r, ...match(r) })),
+    };
+  });
 
   // ----- milk going out (company pickup, local sale, wastage) -----
 
@@ -473,12 +554,12 @@ function createApp(db) {
     return s || null;
   };
 
-  const readBody = (req) => new Promise((resolve, reject) => {
+  const readBody = (req, limit) => new Promise((resolve, reject) => {
     let size = 0;
     const chunks = [];
     req.on('data', (c) => {
       size += c.length;
-      if (size > 1e6) { reject(new HttpError(413, 'Request too large')); req.destroy(); return; }
+      if (size > limit) { reject(new HttpError(413, 'Request too large')); req.destroy(); return; }
       chunks.push(c);
     });
     req.on('end', () => {
@@ -508,9 +589,10 @@ function createApp(db) {
       if (!session) throw new HttpError(401, 'Please log in again');
       if (r.role !== 'any' && session.role !== r.role) throw new HttpError(403, 'Not allowed');
     }
-    const body = ['POST', 'PUT'].includes(req.method) ? await readBody(req) : {};
+    const limit = url.pathname === '/api/milk/scan' ? 15e6 : 1e6;
+    const body = ['POST', 'PUT'].includes(req.method) ? await readBody(req, limit) : {};
     if (typeof body !== 'object' || Array.isArray(body)) throw bad('Invalid request');
-    const result = r.handler({ params, query: url.searchParams, body, session, req });
+    const result = await r.handler({ params, query: url.searchParams, body, session, req });
     send(res, 200, result);
   }
 

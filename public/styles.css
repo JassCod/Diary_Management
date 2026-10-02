@@ -260,6 +260,14 @@ tr.opening td { color: var(--muted); font-style: italic; }
 .ledger-table { display: none; }
 @media (min-width: 760px) { .ledger-list { display: none; } .ledger-table { display: block; } }
 
+/* photo review rows */
+.scan-row { border: 1.5px solid var(--line); border-radius: 14px; padding: 10px; margin-bottom: 10px; display: grid; gap: 8px; }
+.scan-row.warn { border-color: var(--warn); background: var(--warn-soft); }
+.scan-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.scan-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 8px; }
+@media (min-width: 560px) { .scan-grid { grid-template-columns: 1.3fr 1fr 0.8fr 1fr; } }
+.scan-grid input, .scan-grid select, .scan-row > select { min-height: 42px; padding: 8px; font-size: 1rem; }
+
 /* ---------- login ---------- */
 .login-wrap { min-height: 100vh; display: grid; place-items: center; padding: 20px; background: linear-gradient(160deg, var(--brand-soft), var(--bg) 60%); }
 .login { width: 100%; max-width: 420px; }
