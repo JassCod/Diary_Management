@@ -1,0 +1,16 @@
+# Render blueprint: New → Blueprint → pick this repo.
+services:
+  - type: web
+    name: milk-dairy
+    runtime: docker
+    plan: starter # a persistent disk needs a paid plan; free plans lose data
+    healthCheckPath: /api/status
+    envVars:
+      - key: ADMIN_PASSWORD
+        sync: false # Render asks you for it
+      - key: DAIRY_NAME
+        sync: false
+    disk:
+      name: dairy-data
+      mountPath: /data
+      sizeGB: 1

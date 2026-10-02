@@ -553,6 +553,14 @@ function createApp(db) {
 function start() {
   const dbFile = process.env.DB_PATH || path.join(__dirname, '..', 'data', 'dairy.db');
   const db = D.open(dbFile);
+  // On a public server, set ADMIN_PASSWORD so nobody else can claim the
+  // first-time setup page before the owner does.
+  const initial = process.env.ADMIN_PASSWORD;
+  if (initial && !D.getSettings(db).admin_pass_hash) {
+    D.setSetting(db, 'admin_pass_hash', hashSecret(initial));
+    if (process.env.DAIRY_NAME) D.setSetting(db, 'dairy_name', process.env.DAIRY_NAME);
+    console.log('Owner password set from ADMIN_PASSWORD.');
+  }
   const port = Number(process.env.PORT) || 3000;
   http.createServer(createApp(db)).listen(port, () => {
     console.log(`Milk dairy app running on http://localhost:${port}  (data: ${dbFile})`);

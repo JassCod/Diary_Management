@@ -11,6 +11,7 @@ A simple, mobile-friendly app for running a village milk dairy (collection centr
 - **Expenses**: house expenses and dairy business expenses, kept separate, each with cash or online.
 - **Where is my money**: cash in hand, online/bank balance, money to receive, money to pay.
 - **Reports**: profit from milk and feed, business expenses, house expenses, savings, cash vs online, and day-by-day figures for any dates.
+- **Punjabi or English**: switch the language from the top bar, the login page or Settings.
 - **Customer portal**: farmers and buyers log in on their own phone with their **mobile number and a PIN** and can only see their own milk, feed, payments and balance.
 
 ## Run it
@@ -35,12 +36,39 @@ Options (environment variables):
 |---|---|---|
 | `PORT` | `3000` | Web port |
 | `DB_PATH` | `./data/dairy.db` | Where the data file is saved |
+| `ADMIN_PASSWORD` | – | Sets the owner password on first start (use this on a public server) |
+| `DAIRY_NAME` | – | Dairy name used together with `ADMIN_PASSWORD` |
 
 All data is kept in one SQLite file (`data/dairy.db`). Copy that file to make a full backup. You can also use **Settings → Download backup**, which saves your records as a JSON file.
 
 ## Putting it online for customers
 
-To let customers open the app from their own phones, run it on any small server or VPS that has Node 22 (for example Railway, Render, Fly.io or a ₹300/month VPS). Put HTTPS in front of it, and keep `data/` on a persistent disk. Then share the link with your customers.
+To let customers open the app on their own phones, it must run on an internet server. The app is ready for this: it includes a `Dockerfile` and a Render blueprint. You need your own hosting account, so that you own the data and the bill.
+
+### Option A: Railway (easiest, about $5 a month)
+
+1. Sign up at https://railway.com with your GitHub account.
+2. Click **New Project → Deploy from GitHub repo** and choose `Diary_Management`. In the service **Settings → Source**, pick the branch that has the app (or merge it into `main` first).
+3. Open **Variables** and add:
+   - `ADMIN_PASSWORD`: your owner password (this keeps strangers from taking over the setup page)
+   - `DAIRY_NAME`: your dairy's name
+   - `DB_PATH`: `/data/dairy.db`
+4. Right-click the service, choose **Attach volume**, and set the mount path to `/data`. **Without this, your records are lost on every update.**
+5. Open **Settings → Networking → Generate Domain**. You get a link like `https://milk-dairy-production.up.railway.app`.
+6. Open the link, log in as **Dairy owner** with your password, and share the link with customers.
+
+### Option B: Render (about $7 a month)
+
+1. Sign up at https://render.com with GitHub.
+2. Click **New → Blueprint**, pick this repository and branch. Render reads `render.yaml`, which creates the web service and a 1 GB disk at `/data`.
+3. Enter `ADMIN_PASSWORD` and `DAIRY_NAME` when it asks, then deploy.
+
+Don't use free plans that have no permanent disk: they delete your data when they restart.
+
+### After it is online
+
+- Use **Settings → Download backup** every week, and keep the file safe.
+- Customers log in with their mobile number and the PIN you set for them in **People → person → Edit**.
 
 ## Tests
 
