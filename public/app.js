@@ -247,6 +247,126 @@ function wireDeletes(root, after) {
   });
 }
 const delBtn = (path) => `<button class="icon-btn" data-del="${path}" aria-label="${t('Delete')}">🗑</button>`;
+
+// ----- edit any entry -----
+const ENTRY_PATH = {
+  collection: '/api/milk/collections', sale: '/api/milk/sales', feedsale: '/api/feed/sales',
+  purchase: '/api/feed/purchases', payment: '/api/payments', expense: '/api/expenses',
+};
+const editBtn = (kind, id) => `<button class="icon-btn edit" data-edit-entry="${kind}:${id}" aria-label="${t('Edit')}">✏️</button>`;
+// ✏️ + 🗑 shown at the end of every entry line.
+const rowActions = (kind, id) => `<div class="row-btns">${editBtn(kind, id)}${delBtn(`${ENTRY_PATH[kind]}/${id}`)}</div>`;
+
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-edit-entry]');
+  if (!b) return;
+  const [kind, id] = b.dataset.editEntry.split(':');
+  editEntry(kind, Number(id)).catch((err) => toast(err.message, true));
+});
+
+const numField = (label, name, value, cls = '') =>
+  field(label, `<input name="${name}" class="${cls}" type="number" step="0.01" min="0" inputmode="decimal" value="${value ?? ''}">`);
+const dateField = (value) => field(t('Date'), `<input type="date" name="date" value="${esc(value)}" required>`);
+const noteField = (value) => field(t('Note'), `<input name="note" value="${esc(value || '')}" placeholder="${t('Optional')}">`);
+const allItemOptions = (sel) => S.items.map((i) =>
+  `<option value="${i.id}" ${Number(sel) === i.id ? 'selected' : ''}>${esc(i.name)}</option>`).join('');
+
+async function editEntry(kind, id) {
+  const path = ENTRY_PATH[kind];
+  if (!path) return;
+  const [r] = await Promise.all([
+    api('GET', `${path}/${id}`),
+    S.parties.length ? null : loadParties(),
+    ['feedsale', 'purchase'].includes(kind) && !S.items.length ? loadItems() : null,
+  ]);
+  const amountBox = `<div class="amount-preview"><span>${t('Amount')}</span><b id="eamt"></b></div>`;
+  let html = '';
+  if (kind === 'collection') {
+    html = `
+      <div class="grid">${dateField(r.date)}</div>
+      <div class="grid">${field(t('Time'), seg('shift', [['morning', SHIFT('morning')], ['evening', SHIFT('evening')]], r.shift))}</div>
+      <div class="grid">${field(t('Farmer'), picker('party_id', { kinds: ['farmer'], value: r.party_id }))}</div>
+      <div class="grid">${field(t('Milk type'), milkTypeSeg(r.milk_type))}</div>
+      <div class="grid three">${numField(t('Litres'), 'qty', r.qty, 'big')}${numField(t('Fat %'), 'fat', r.fat)}${numField(t('Rate ₹/L'), 'rate', r.rate)}</div>
+      ${amountBox}`;
+  } else if (kind === 'sale') {
+    html = `
+      <div class="grid">${field(t('Where did the milk go?'), seg('buyer_type', [['company', '🚚 ' + t('Company van')], ['local', '🏠 ' + t('Local sale')], ['wastage', '🗑 ' + t('Waste / home')]], r.buyer_type))}</div>
+      <div class="grid">${dateField(r.date)}</div>
+      <div class="grid">${field(t('Milk type'), milkTypeSeg(r.milk_type))}</div>
+      <div class="grid" data-show="company local">${field(t('Buyer'), picker('party_id', { kinds: ['company', 'buyer'], value: r.party_id }))}</div>
+      <div class="grid" data-show="local">${field(t('Or buyer name (walk-in)'), `<input name="buyer_name" value="${esc(r.buyer_name || '')}">`)}</div>
+      <div class="grid three">${numField(t('Litres'), 'qty', r.qty, 'big')}${numField(t('Fat %'), 'fat', r.fat)}<span data-show="company local">${numField(t('Rate ₹/L'), 'rate', r.rate || '')}</span></div>
+      <div data-show="company local">${amountBox}
+        <div class="grid">${field(t('Payment'), seg('mode', [['credit', '📒 ' + t('Udhaar / later')], ['cash', '💵 ' + t('Cash')], ['online', '📱 ' + t('Online')]], r.mode))}</div></div>
+      <div class="grid two"><span data-show="company">${field(t('Van / vehicle no.'), `<input name="vehicle" value="${esc(r.vehicle || '')}">`)}</span>${noteField(r.note)}</div>`;
+  } else if (kind === 'feedsale') {
+    html = `
+      <div class="grid">${dateField(r.date)}</div>
+      <div class="grid">${field(t('Customer'), picker('party_id', { kinds: ['farmer', 'feed'], value: r.party_id, placeholder: t('Search customer (leave empty for walk-in)') }))}</div>
+      <div class="grid">${field(t('Or walk-in buyer name'), `<input name="buyer_name" value="${esc(r.buyer_name || '')}">`)}</div>
+      <div class="grid">${field(t('Feed item'), `<select name="item_id" required>${allItemOptions(r.item_id)}</select>`)}</div>
+      <div class="grid two">${numField(t('Quantity'), 'qty', r.qty, 'big')}${numField(t('Rate ₹'), 'rate', r.rate)}</div>
+      ${amountBox}
+      <div class="grid">${field(t('Payment'), seg('mode', [['account', '📒 ' + t('Cut from milk money')], ['cash', '💵 ' + t('Cash')], ['online', '📱 ' + t('Online')]], r.mode))}</div>
+      <div class="grid">${noteField(r.note)}</div>`;
+  } else if (kind === 'purchase') {
+    html = `
+      <div class="grid">${dateField(r.date)}</div>
+      <div class="grid">${field(t('Feed item'), `<select name="item_id" required>${allItemOptions(r.item_id)}</select>`)}</div>
+      <div class="grid two">${numField(t('Quantity'), 'qty', r.qty, 'big')}${numField(t('Rate ₹ (per unit)'), 'rate', r.rate)}</div>
+      ${amountBox}
+      <div class="grid">${field(t('Supplier'), picker('party_id', { kinds: ['supplier'], value: r.party_id, placeholder: t('Search supplier (optional)') }))}</div>
+      <div class="grid">${field(t('Payment'), seg('mode', [['cash', '💵 ' + t('Cash')], ['online', '📱 ' + t('Online')], ['account', '📒 ' + t('Pay later')]], r.mode))}</div>
+      <div class="grid">${noteField(r.note)}</div>`;
+  } else if (kind === 'payment') {
+    html = `
+      <div class="grid">${seg('direction', [['out', '💸 ' + t('Dairy pays')], ['in', '📥 ' + t('Dairy receives')]], r.direction)}</div>
+      <div class="grid">${field(t('Person'), picker('party_id', { value: r.party_id }))}</div>
+      <div class="grid">${numField(t('Amount ₹'), 'amount', r.amount, 'big')}</div>
+      <div class="grid">${field(t('Mode'), cashOnlineSeg(r.mode))}</div>
+      <div class="grid two">${dateField(r.date)}${noteField(r.note)}</div>`;
+  } else if (kind === 'expense') {
+    html = `
+      <div class="grid">${seg('kind', [['house', '🏠 ' + t('House')], ['business', '🏪 ' + t('Dairy business')]], r.kind)}</div>
+      <div class="grid">${field(t('Spent on'), `<input name="category" list="ecats" value="${esc(t(r.category))}" required>
+        <datalist id="ecats">${Object.values(EXP_CATS).flat().map((c) => `<option value="${esc(t(c))}">`).join('')}</datalist>`)}</div>
+      <div class="grid">${numField(t('Amount ₹'), 'amount', r.amount, 'big')}</div>
+      <div class="grid">${field(t('Paid by'), cashOnlineSeg(r.mode))}</div>
+      <div class="grid two">${dateField(r.date)}${noteField(r.note)}</div>`;
+  }
+  const m = openModal(t('Edit entry'), `<form id="fedit" autocomplete="off">${html}
+    <div class="row-actions" style="margin-top:12px"><button class="btn" type="submit">✓ ${t('Save changes')}</button>
+    <button class="btn plain" type="button" data-close>${t('Cancel')}</button></div></form>`);
+  $$('[data-close]', m).forEach((b) => { b.onclick = () => m.close(); });
+  const f = $('#fedit', m);
+  initPickers(m);
+
+  const amt = $('#eamt', m);
+  const upd = () => { if (amt) amt.textContent = money(r2((Number(f.qty?.value) || 0) * (Number(f.rate?.value) || 0))); };
+  f.addEventListener('input', upd);
+  upd();
+  if (kind === 'sale') {
+    const sync = () => {
+      const bt = f.buyer_type.value;
+      $$('[data-show]', f).forEach((el) => { el.hidden = !el.dataset.show.split(' ').includes(bt); });
+    };
+    $$('input[name=buyer_type]', f).forEach((x) => x.addEventListener('change', sync));
+    sync();
+  }
+
+  onSubmit(f, async (d) => {
+    if (kind === 'expense') {
+      const match = Object.values(EXP_CATS).flat().find((c) => t(c) === d.category);
+      if (match) d.category = match;
+    }
+    await api('PUT', `${path}/${id}`, d);
+    m.close();
+    toast('Saved');
+    if (S.parties.length) await loadParties();
+    router();
+  });
+}
 const empty = (msg) => `<div class="empty">${t(msg)}</div>`;
 
 // Range chooser used by reports, ledgers and the customer portal.
@@ -537,7 +657,7 @@ function milkCollect(root) {
   <div class="cols">
     <form class="card" id="f" autocomplete="off">
       <h2>${t('New milk entry')}</h2>
-      <div class="grid date-shift">
+      <div class="grid">
         ${field(t('Date'), `<input type="date" name="date" value="${st.date}" required>`)}
         ${field(t('Time'), seg('shift', [['morning', SHIFT('morning')], ['evening', SHIFT('evening')]], st.shift))}
       </div>
@@ -599,7 +719,7 @@ function milkCollect(root) {
         <div class="avatar">${esc(r.party_code || initials(r.party_name))}</div>
         <div class="main"><b>${esc(r.party_name)}</b><small>${typeBadge(r.milk_type)} ${qty(r.qty)} ${t('L')}${r.fat ? ` · ${t('fat')} ${r.fat}` : ''} · ₹${r.rate}/${t('L')}</small></div>
         <div class="end"><b>${money(r.amount)}</b></div>
-        ${delBtn(`/api/milk/collections/${r.id}`)}
+        ${rowActions('collection', r.id)}
       </div>`).join('')}</div>` : empty('No entries yet for this time.');
   }
   wireDeletes($('#list', root), list);
@@ -652,7 +772,7 @@ function milkScan(root) {
     <form class="card" id="f">
       <h2>📷 ${t('Milk entry from photo')}</h2>
       <p class="sub" style="margin-top:0">${t('Take a clear photo of the whole page in good light. You will check every line before saving.')}</p>
-      <div class="grid date-shift">
+      <div class="grid">
         ${field(t('Date'), `<input type="date" name="date" value="${sessionStorage.getItem('mc_date') || today()}" required>`)}
         ${field(t('Time'), seg('shift', [['morning', SHIFT('morning')], ['evening', SHIFT('evening')]], sessionStorage.getItem('mc_shift') || defaultShift()))}
       </div>
@@ -841,7 +961,7 @@ function milkOut(root) {
         <div class="main"><b>${esc(r.party_name || r.buyer_name || (r.buyer_type === 'wastage' ? t('Waste / home use') : t('Local sale')))}</b>
           <small>${fmtDate(r.date)} · ${typeBadge(r.milk_type)} ${qty(r.qty)} ${t('L')}${r.fat ? ` · ${t('fat')} ${r.fat}` : ''}${r.vehicle ? ` · ${esc(r.vehicle)}` : ''}</small></div>
         <div class="end"><b>${r.buyer_type === 'wastage' ? '–' : money(r.amount)}</b>${r.buyer_type !== 'wastage' ? `<small>${MODE(r.mode)}</small>` : ''}</div>
-        ${delBtn(`/api/milk/sales/${r.id}`)}
+        ${rowActions('sale', r.id)}
       </div>`).join('')}</div>` : empty('Nothing yet.');
   }
   wireDeletes($('#list', root), refresh);
@@ -925,7 +1045,7 @@ function feedSell(root) {
         <div class="avatar">🌾</div>
         <div class="main"><b>${esc(r.party_name || r.buyer_name || t('Walk-in'))}</b><small>${fmtDate(r.date)} · ${esc(r.item)} · ${qty(r.qty)} ${esc(t(r.unit))} @ ₹${r.rate}</small></div>
         <div class="end"><b>${money(r.amount)}</b><small>${MODE(r.mode)}</small></div>
-        ${delBtn(`/api/feed/sales/${r.id}`)}
+        ${rowActions('feedsale', r.id)}
       </div>`).join('')}</div>` : empty('No feed sold in last 30 days.');
   }
   wireDeletes($('#list', root), async () => { await loadItems(); list(); });
@@ -1021,7 +1141,7 @@ function feedBuy(root) {
         <div class="avatar">🚛</div>
         <div class="main"><b>${esc(r.item)}</b><small>${fmtDate(r.date)} · ${qty(r.qty)} ${esc(t(r.unit))} @ ₹${r.rate}${r.party_name ? ' · ' + esc(r.party_name) : ''}</small></div>
         <div class="end"><b>${money(r.amount)}</b><small>${r.mode === 'account' ? t('Pay later') : MODE(r.mode)}</small></div>
-        ${delBtn(`/api/feed/purchases/${r.id}`)}
+        ${rowActions('purchase', r.id)}
       </div>`).join('')}</div>` : empty('No purchases in last 90 days.');
   }
   wireDeletes($('#list', root), async () => { await loadItems(); list(); });
@@ -1173,7 +1293,7 @@ async function pagePerson(id, from, to) {
     </div>
     <div class="card">
       <h2>${t('Record')} ${fmtDate(from)} – ${fmtDate(to)}</h2>
-      ${ledgerTable(l)}
+      ${ledgerTable(l, true)}
     </div>`;
   wireRange(main, (f, tt) => { sessionStorage.setItem('lf', f); sessionStorage.setItem('lt', tt); pagePerson(id, f, tt); });
   $('#edit').onclick = () => personForm(partyById(id), () => pagePerson(id, from, to));
@@ -1198,23 +1318,26 @@ async function pagePerson(id, from, to) {
   };
 }
 
-function ledgerTable(l) {
+const LEDGER_KIND = { milk_in: 'collection', milk_out: 'sale', feed: 'feedsale', feed_supply: 'purchase', pay_out: 'payment', pay_in: 'payment' };
+
+function ledgerTable(l, editable = false) {
   const rows = l.entries;
+  const edit = (r) => (editable && r.id && LEDGER_KIND[r.kind] ? editBtn(LEDGER_KIND[r.kind], r.id) : '');
   return `<div class="list ledger-list">
     <div class="item"><div class="main"><b>${t('Opening balance')}</b><small>${l.from ? fmtDate(l.from) : ''}</small></div><div class="end"><b>${money(l.opening)}</b></div></div>
     ${rows.map((r) => `<div class="item"><div class="main"><small>${fmtDate(r.date)}</small><div>${esc(ledgerDesc(r))}</div></div>
-      <div class="end">${r.credit ? `<b class="good-t">+${money(r.credit)}</b>` : ''}${r.debit ? `<b class="bad-t">−${money(r.debit)}</b>` : ''}<small>${t('Bal')} ${money(r.balance)}</small></div></div>`).join('')}
+      <div class="end">${r.credit ? `<b class="good-t">+${money(r.credit)}</b>` : ''}${r.debit ? `<b class="bad-t">−${money(r.debit)}</b>` : ''}<small>${t('Bal')} ${money(r.balance)}</small></div>${edit(r)}</div>`).join('')}
     <div class="item"><div class="main"><b>${t('Closing balance')}</b></div><div class="end"><b>${money(l.closing)}</b></div></div>
   </div>
   <div class="table-wrap ledger-table"><table>
-    <thead><tr><th>${t('Date')}</th><th>${t('Details')}</th><th class="n">+ ${t('Credit')}</th><th class="n">− ${t('Debit')}</th><th class="n">${t('Balance')}</th></tr></thead>
+    <thead><tr><th>${t('Date')}</th><th>${t('Details')}</th><th class="n">+ ${t('Credit')}</th><th class="n">− ${t('Debit')}</th><th class="n">${t('Balance')}</th>${editable ? '<th class="no-print"></th>' : ''}</tr></thead>
     <tbody>
-      <tr class="opening"><td>${l.from ? fmtDate(l.from) : ''}</td><td>${t('Opening balance')}</td><td></td><td></td><td class="n">${money(l.opening)}</td></tr>
+      <tr class="opening"><td>${l.from ? fmtDate(l.from) : ''}</td><td>${t('Opening balance')}</td><td></td><td></td><td class="n">${money(l.opening)}</td>${editable ? '<td class="no-print"></td>' : ''}</tr>
       ${rows.map((r) => `<tr><td>${fmtDate(r.date)}</td><td>${esc(ledgerDesc(r))}</td>
         <td class="n">${r.credit ? money(r.credit) : ''}</td><td class="n">${r.debit ? money(r.debit) : ''}</td>
-        <td class="n ${r.balance < 0 ? 'bad-t' : ''}">${money(r.balance)}</td></tr>`).join('')}
+        <td class="n ${r.balance < 0 ? 'bad-t' : ''}">${money(r.balance)}</td>${editable ? `<td class="no-print">${edit(r)}</td>` : ''}</tr>`).join('')}
     </tbody>
-    <tfoot><tr><td></td><td>${t('Total')}</td><td class="n">${money(l.total_credit)}</td><td class="n">${money(l.total_debit)}</td><td class="n">${money(l.closing)}</td></tr></tfoot>
+    <tfoot><tr><td></td><td>${t('Total')}</td><td class="n">${money(l.total_credit)}</td><td class="n">${money(l.total_debit)}</td><td class="n">${money(l.closing)}</td>${editable ? '<td class="no-print"></td>' : ''}</tr></tfoot>
   </table></div>
   <p class="sub">${t('Balance in plus (+) = dairy has to pay. In minus (−) = person has to pay dairy.')}</p>`;
 }
@@ -1296,7 +1419,7 @@ async function pageMoney() {
       <div class="item"><div class="avatar">${r.direction === 'out' ? '💸' : '📥'}</div>
         <div class="main"><b>${esc(r.party_name)}</b><small>${fmtDate(r.date)} · ${r.direction === 'out' ? t('Paid by dairy') : t('Received')} · ${MODE(r.mode)}${r.note ? ' · ' + esc(r.note) : ''}</small></div>
         <div class="end"><b class="${r.direction === 'out' ? 'bad-t' : 'good-t'}">${r.direction === 'out' ? '−' : '+'}${money(r.amount)}</b></div>
-        ${delBtn(`/api/payments/${r.id}`)}</div>`).join('')}</div>`
+        ${rowActions('payment', r.id)}</div>`).join('')}</div>`
       : empty('No payments in last 60 days.');
   }
   main.addEventListener('click', (e) => {
@@ -1364,7 +1487,7 @@ async function pageExpenses() {
       <div class="item"><div class="avatar">${r.kind === 'house' ? '🏠' : '🏪'}</div>
         <div class="main"><b>${esc(t(r.category))}</b><small>${fmtDate(r.date)} · ${MODE(r.mode)}${r.note ? ' · ' + esc(r.note) : ''}</small></div>
         <div class="end"><b>${money(r.amount)}</b></div>
-        ${delBtn(`/api/expenses/${r.id}`)}</div>`).join('')}</div>`
+        ${rowActions('expense', r.id)}</div>`).join('')}</div>`
       : empty('No expenses this month.');
   }
   wireDeletes($('#list'), list);

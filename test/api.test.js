@@ -147,3 +147,54 @@ test('static files and path traversal', async () => {
   const t = await fetch(base + '/..%2fsrc%2fserver.js');
   assert.notEqual(t.status, 200);
 });
+
+test('owner can edit entries and balances follow', async () => {
+  const f = await as('POST', '/api/parties', { name: 'Edit Farmer', kind: 'farmer' });
+  const other = await as('POST', '/api/parties', { name: 'Other Farmer', kind: 'farmer' });
+
+  // Milk entry: fix litres and move it to the right farmer.
+  const m = await as('POST', '/api/milk/collections', { date: '2026-10-05', shift: 'morning', party_id: f.id, milk_type: 'cow', qty: 10, rate: 35 });
+  const m2 = await as('PUT', `/api/milk/collections/${m.id}`, { date: '2026-10-05', shift: 'evening', party_id: other.id, milk_type: 'buffalo', qty: 8, fat: 6.5, rate: 48.75 });
+  assert.equal(m2.id, m.id);
+  assert.equal(m2.amount, 390);
+  assert.equal(m2.shift, 'evening');
+  assert.equal((await as('GET', `/api/parties/${f.id}/ledger`)).party.balance, 0);
+  assert.equal((await as('GET', `/api/parties/${other.id}/ledger`)).party.balance, 390);
+
+  // Edits are validated like new entries; unknown ids are 404.
+  const bad = await call('PUT', `/api/milk/collections/${m.id}`, { date: '2026-10-05', shift: 'evening', party_id: other.id, milk_type: 'cow', qty: 0, rate: 35 }, admin);
+  assert.equal(bad.status, 400);
+  assert.equal((await call('PUT', '/api/milk/collections/999999', { date: '2026-10-05', shift: 'evening', party_id: other.id, milk_type: 'cow', qty: 1, rate: 35 }, admin)).status, 404);
+
+  // Feed sale keeps the cost it was sold at when only the quantity changes.
+  const item = await as('POST', '/api/feed/items', { name: 'Khal', unit: 'bag', purchase_price: 500, sale_price: 600 });
+  const s = await as('POST', '/api/feed/sales', { date: '2026-10-05', item_id: item.id, party_id: other.id, qty: 1, rate: 600, mode: 'account' });
+  await as('PUT', `/api/feed/items/${item.id}`, { name: 'Khal', unit: 'bag', purchase_price: 550, sale_price: 600 });
+  const s2 = await as('PUT', `/api/feed/sales/${s.id}`, { date: '2026-10-05', item_id: item.id, party_id: other.id, qty: 2, rate: 600, mode: 'account' });
+  assert.equal(s2.cost_rate, 500);
+  assert.equal(s2.amount, 1200);
+  assert.equal((await as('GET', `/api/parties/${other.id}/ledger`)).party.balance, 390 - 1200);
+
+  // Editing a purchase's rate updates the item's cost price.
+  const pu = await as('POST', '/api/feed/purchases', { date: '2026-10-05', item_id: item.id, qty: 10, rate: 520, mode: 'cash' });
+  await as('PUT', `/api/feed/purchases/${pu.id}`, { date: '2026-10-05', item_id: item.id, qty: 10, rate: 510, mode: 'cash' });
+  assert.equal((await as('GET', '/api/feed/items')).find((i) => i.id === item.id).purchase_price, 510);
+
+  // Payment and expense edits.
+  const p = await as('POST', '/api/payments', { date: '2026-10-05', party_id: other.id, direction: 'in', amount: 100, mode: 'cash' });
+  const p2 = await as('PUT', `/api/payments/${p.id}`, { date: '2026-10-05', party_id: other.id, direction: 'in', amount: 810, mode: 'online', note: 'fixed' });
+  assert.equal(p2.mode, 'online');
+  assert.equal((await as('GET', `/api/parties/${other.id}/ledger`)).party.balance, 0);
+  const e = await as('POST', '/api/expenses', { date: '2026-10-05', kind: 'house', category: 'Gas', amount: 900, mode: 'cash' });
+  const e2 = await as('PUT', `/api/expenses/${e.id}`, { date: '2026-10-05', kind: 'business', category: 'Repair', amount: 950, mode: 'cash' });
+  assert.deepEqual([e2.kind, e2.category, e2.amount], ['business', 'Repair', 950]);
+
+  // Milk-out entry edit: wastage clears money fields.
+  const o = await as('POST', '/api/milk/sales', { date: '2026-10-05', buyer_type: 'local', buyer_name: 'X', milk_type: 'cow', qty: 2, rate: 50, mode: 'cash' });
+  const o2 = await as('PUT', `/api/milk/sales/${o.id}`, { date: '2026-10-05', buyer_type: 'wastage', milk_type: 'cow', qty: 2 });
+  assert.deepEqual([o2.amount, o2.buyer_name], [0, null]);
+
+  // Customers cannot edit.
+  const c = await ok('POST', '/api/login/customer', { phone: '9876543210', pin: '1234' });
+  assert.equal((await call('PUT', `/api/expenses/${e.id}`, { date: '2026-10-05', kind: 'house', category: 'X', amount: 1, mode: 'cash' }, c.token)).status, 403);
+});

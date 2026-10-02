@@ -163,12 +163,13 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--b
 input.big { font-size: 1.4rem; font-weight: 800; }
 textarea { min-height: 70px; resize: vertical; }
 
-.seg { display: flex; background: var(--bg); border: 1.5px solid var(--line); border-radius: 12px; padding: 3px; gap: 3px; }
-.seg label { flex: 1; position: relative; }
+.seg { display: flex; flex-wrap: wrap; background: var(--bg); border: 1.5px solid var(--line); border-radius: 12px; padding: 3px; gap: 3px; }
+.seg label { flex: 1 1 auto; position: relative; }
 .seg input { position: absolute; opacity: 0; pointer-events: none; }
 .seg span {
   display: flex; align-items: center; justify-content: center; gap: 4px; min-height: 42px; padding: 6px 8px;
   border-radius: 9px; font-weight: 700; color: var(--muted); cursor: pointer; text-align: center; font-size: .95rem;
+  white-space: nowrap;
 }
 .seg input:checked + span { background: var(--card); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
 .seg input:checked + span.cow { background: var(--cow); color: #fff; }
@@ -189,6 +190,8 @@ textarea { min-height: 70px; resize: vertical; }
 .icon-btn { background: none; border: 0; color: var(--muted); font-size: 1.1rem; cursor: pointer; padding: 6px 8px; border-radius: 8px; }
 .icon-btn:hover { background: var(--bg); color: var(--bad); }
 .row-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.row-btns { display: flex; gap: 2px; flex: none; }
+.icon-btn.edit:hover { color: var(--brand); }
 
 .amount-preview { display: flex; justify-content: space-between; align-items: baseline; padding: 12px 14px; border-radius: 12px; background: var(--brand-soft); margin-bottom: 12px; }
 .amount-preview b { font-size: 1.5rem; color: var(--brand); }
@@ -254,7 +257,6 @@ tr.opening td { color: var(--muted); font-style: italic; }
 .hbar { height: 10px; border-radius: 6px; background: var(--brand); }
 .hbar.house { background: var(--warn); }
 
-@media (min-width: 560px) { .date-shift { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .ledger-list .item { align-items: flex-start; }
 .ledger-list .end b { display: block; }
 .ledger-table { display: none; }

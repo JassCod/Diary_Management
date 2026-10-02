@@ -188,6 +188,8 @@ const PA = {
   'The list is too long for one photo. Please photograph half the page at a time.': 'ਇੱਕ ਫੋਟੋ ਲਈ ਸੂਚੀ ਬਹੁਤ ਲੰਮੀ ਹੈ। ਅੱਧਾ-ਅੱਧਾ ਪੰਨਾ ਖਿੱਚੋ।',
   'a photo': 'ਫੋਟੋ',
 
+  'Edit entry': 'ਐਂਟਰੀ ਬਦਲੋ', 'Save changes': 'ਬਦਲਾਅ ਸੇਵ ਕਰੋ',
+
   // server messages
   'Account not found': 'ਖਾਤਾ ਨਹੀਂ ਮਿਲਿਆ', 'Already set up': 'ਪਹਿਲਾਂ ਹੀ ਸੈੱਟ ਹੈ', 'Current password is wrong': 'ਮੌਜੂਦਾ ਪਾਸਵਰਡ ਗਲਤ ਹੈ',
   'Customer not found': 'ਗਾਹਕ ਨਹੀਂ ਮਿਲਿਆ', 'Entry not found': 'ਐਂਟਰੀ ਨਹੀਂ ਮਿਲੀ', 'Feed item not found': 'ਫੀਡ ਚੀਜ਼ ਨਹੀਂ ਮਿਲੀ',

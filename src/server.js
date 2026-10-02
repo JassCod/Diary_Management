@@ -285,25 +285,51 @@ function createApp(db, { scanner = defaultScanner } = {}) {
     return l;
   });
 
+  // New entries (POST), edits (PUT) and deletes share one validator per kind,
+  // so an edited entry is checked exactly like a new one.
+  const entryRoutes = (path, table, fields, after) => {
+    const get = (id) => db.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(id);
+    route('POST', path, 'admin', ({ body }) => {
+      const f = fields(body, null);
+      const cols = Object.keys(f);
+      const r = db.prepare(`INSERT INTO ${table} (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`).run(...Object.values(f));
+      const row = get(r.lastInsertRowid);
+      if (after) after(row, null);
+      return row;
+    });
+    route('PUT', `${path}/:id`, 'admin', ({ params, body }) => {
+      const old = get(params.id);
+      if (!old) throw new HttpError(404, 'Entry not found');
+      const f = fields(body, old);
+      db.prepare(`UPDATE ${table} SET ${Object.keys(f).map((c) => `${c} = ?`).join(', ')} WHERE id = ?`).run(...Object.values(f), params.id);
+      const row = get(params.id);
+      if (after) after(row, old);
+      return row;
+    });
+    route('GET', `${path}/:id`, 'admin', ({ params }) => {
+      const row = get(params.id);
+      if (!row) throw new HttpError(404, 'Entry not found');
+      return row;
+    });
+    route('DELETE', `${path}/:id`, 'admin', del(table));
+  };
+
   // ----- milk collection (buying from farmers) -----
 
   route('GET', '/api/milk/collections', 'admin', listRange(
     `SELECT x.*, p.name AS party_name, p.code AS party_code FROM milk_collections x JOIN parties p ON p.id = x.party_id`,
     "x.date DESC, x.shift DESC, x.id DESC"));
 
-  route('POST', '/api/milk/collections', 'admin', ({ body }) => {
+  entryRoutes('/api/milk/collections', 'milk_collections', (body) => {
     const qty = num(body.qty, 'quantity (litres)');
     const rate = num(body.rate, 'rate');
-    const v = [
-      date(body.date), oneOf(body.shift, ['morning', 'evening'], 'morning or evening'),
-      requireParty(body.party_id), oneOf(body.milk_type, ['cow', 'buffalo'], 'cow or buffalo'),
-      qty, num(body.fat, 'fat', { optional: true }), num(body.snf, 'SNF', { optional: true }), rate, D.round2(qty * rate),
-    ];
-    const r = db.prepare(`INSERT INTO milk_collections (date, shift, party_id, milk_type, qty, fat, snf, rate, amount)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(...v);
-    return db.prepare('SELECT * FROM milk_collections WHERE id = ?').get(r.lastInsertRowid);
+    return {
+      date: date(body.date), shift: oneOf(body.shift, ['morning', 'evening'], 'morning or evening'),
+      party_id: requireParty(body.party_id), milk_type: oneOf(body.milk_type, ['cow', 'buffalo'], 'cow or buffalo'),
+      qty, fat: num(body.fat, 'fat', { optional: true }), snf: num(body.snf, 'SNF', { optional: true }),
+      rate, amount: D.round2(qty * rate),
+    };
   });
-  route('DELETE', '/api/milk/collections/:id', 'admin', del('milk_collections'));
 
   // Save many entries at once (used after reading a photo). All or nothing.
   route('POST', '/api/milk/collections/bulk', 'admin', ({ body }) => {
@@ -377,7 +403,7 @@ function createApp(db, { scanner = defaultScanner } = {}) {
     `SELECT x.*, p.name AS party_name FROM milk_sales x LEFT JOIN parties p ON p.id = x.party_id`,
     'x.date DESC, x.id DESC'));
 
-  route('POST', '/api/milk/sales', 'admin', ({ body }) => {
+  entryRoutes('/api/milk/sales', 'milk_sales', (body) => {
     const buyerType = oneOf(body.buyer_type, ['company', 'local', 'wastage'], 'who the milk went to');
     const qty = num(body.qty, 'quantity (litres)');
     const isWaste = buyerType === 'wastage';
@@ -385,14 +411,13 @@ function createApp(db, { scanner = defaultScanner } = {}) {
     const mode = isWaste ? 'cash' : oneOf(body.mode, ['cash', 'online', 'credit'], 'payment mode');
     const partyId = isWaste ? null : partyExists(body.party_id || null);
     if (mode === 'credit' && !partyId) throw bad('For credit (udhaar), please choose the buyer from the list');
-    const r = db.prepare(`INSERT INTO milk_sales (date, buyer_type, party_id, buyer_name, milk_type, qty, fat, rate, amount, mode, vehicle, note)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
-      date(body.date), buyerType, partyId, text(body.buyer_name, 80),
-      oneOf(body.milk_type, ['cow', 'buffalo'], 'cow or buffalo'), qty,
-      num(body.fat, 'fat', { optional: true }), rate, D.round2(qty * rate), mode, text(body.vehicle, 40), text(body.note, 300));
-    return db.prepare('SELECT * FROM milk_sales WHERE id = ?').get(r.lastInsertRowid);
+    return {
+      date: date(body.date), buyer_type: buyerType, party_id: partyId, buyer_name: isWaste ? null : text(body.buyer_name, 80),
+      milk_type: oneOf(body.milk_type, ['cow', 'buffalo'], 'cow or buffalo'), qty,
+      fat: num(body.fat, 'fat', { optional: true }), rate, amount: D.round2(qty * rate), mode,
+      vehicle: text(body.vehicle, 40), note: text(body.note, 300),
+    };
   });
-  route('DELETE', '/api/milk/sales/:id', 'admin', del('milk_sales'));
 
   // ----- feed -----
 
@@ -432,39 +457,46 @@ function createApp(db, { scanner = defaultScanner } = {}) {
     `SELECT x.*, i.name AS item, i.unit, p.name AS party_name FROM feed_purchases x
      JOIN feed_items i ON i.id = x.item_id LEFT JOIN parties p ON p.id = x.party_id`, 'x.date DESC, x.id DESC'));
 
-  route('POST', '/api/feed/purchases', 'admin', ({ body }) => {
+  // The latest bulk price (by date) is the cost used for feed profit.
+  const syncFeedCost = (itemId) => db.prepare(`UPDATE feed_items SET purchase_price =
+      (SELECT rate FROM feed_purchases WHERE item_id = ? ORDER BY date DESC, id DESC LIMIT 1)
+    WHERE id = ? AND EXISTS (SELECT 1 FROM feed_purchases WHERE item_id = ?)`).run(itemId, itemId, itemId);
+
+  entryRoutes('/api/feed/purchases', 'feed_purchases', (body) => {
     const item = feedItem(body.item_id);
     const qty = num(body.qty, 'quantity');
     const rate = num(body.rate, 'rate');
     const mode = oneOf(body.mode, ['cash', 'online', 'account'], 'payment mode');
     const partyId = partyExists(body.party_id || null);
     if (mode === 'account' && !partyId) throw bad('To buy on account, please choose the supplier');
-    const r = db.prepare(`INSERT INTO feed_purchases (date, item_id, party_id, supplier, qty, rate, amount, mode, note)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(date(body.date), item.id, partyId, text(body.supplier, 80),
-      qty, rate, D.round2(qty * rate), mode, text(body.note, 300));
-    // Latest bulk price becomes the cost used for feed profit.
-    db.prepare('UPDATE feed_items SET purchase_price = ? WHERE id = ?').run(rate, item.id);
-    return { id: Number(r.lastInsertRowid) };
+    return {
+      date: date(body.date), item_id: item.id, party_id: partyId, supplier: text(body.supplier, 80),
+      qty, rate, amount: D.round2(qty * rate), mode, note: text(body.note, 300),
+    };
+  }, (row, old) => {
+    syncFeedCost(row.item_id);
+    if (old && old.item_id !== row.item_id) syncFeedCost(old.item_id);
   });
-  route('DELETE', '/api/feed/purchases/:id', 'admin', del('feed_purchases'));
 
   route('GET', '/api/feed/sales', 'admin', listRange(
     `SELECT x.*, i.name AS item, i.unit, p.name AS party_name FROM feed_sales x
      JOIN feed_items i ON i.id = x.item_id LEFT JOIN parties p ON p.id = x.party_id`, 'x.date DESC, x.id DESC'));
 
-  route('POST', '/api/feed/sales', 'admin', ({ body }) => {
+  entryRoutes('/api/feed/sales', 'feed_sales', (body, old) => {
     const item = feedItem(body.item_id);
     const qty = num(body.qty, 'quantity');
     const rate = num(body.rate, 'rate');
     const mode = oneOf(body.mode, ['cash', 'online', 'account'], 'payment mode');
     const partyId = partyExists(body.party_id || null);
     if (mode === 'account' && !partyId) throw bad('To add to account (cut from milk money), please choose the customer');
-    const r = db.prepare(`INSERT INTO feed_sales (date, item_id, party_id, buyer_name, qty, rate, amount, cost_rate, mode, note)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(date(body.date), item.id, partyId, text(body.buyer_name, 80),
-      qty, rate, D.round2(qty * rate), item.purchase_price, mode, text(body.note, 300));
-    return { id: Number(r.lastInsertRowid) };
+    return {
+      date: date(body.date), item_id: item.id, party_id: partyId, buyer_name: partyId ? null : text(body.buyer_name, 80),
+      qty, rate, amount: D.round2(qty * rate),
+      // Keep the cost the sale was made at, unless the item itself changed.
+      cost_rate: old && old.item_id === item.id ? old.cost_rate : item.purchase_price,
+      mode, note: text(body.note, 300),
+    };
   });
-  route('DELETE', '/api/feed/sales/:id', 'admin', del('feed_sales'));
 
   // ----- payments -----
 
@@ -472,13 +504,11 @@ function createApp(db, { scanner = defaultScanner } = {}) {
     `SELECT x.*, p.name AS party_name, p.kind AS party_kind FROM payments x JOIN parties p ON p.id = x.party_id`,
     'x.date DESC, x.id DESC'));
 
-  route('POST', '/api/payments', 'admin', ({ body }) => {
-    const r = db.prepare(`INSERT INTO payments (date, party_id, direction, amount, mode, note) VALUES (?, ?, ?, ?, ?, ?)`).run(
-      date(body.date), requireParty(body.party_id), oneOf(body.direction, ['in', 'out'], 'paid or received'),
-      num(body.amount, 'amount'), oneOf(body.mode, ['cash', 'online'], 'cash or online'), text(body.note, 300));
-    return { id: Number(r.lastInsertRowid) };
-  });
-  route('DELETE', '/api/payments/:id', 'admin', del('payments'));
+  entryRoutes('/api/payments', 'payments', (body) => ({
+    date: date(body.date), party_id: requireParty(body.party_id),
+    direction: oneOf(body.direction, ['in', 'out'], 'paid or received'),
+    amount: num(body.amount, 'amount'), mode: oneOf(body.mode, ['cash', 'online'], 'cash or online'), note: text(body.note, 300),
+  }));
 
   // ----- expenses -----
 
@@ -493,15 +523,14 @@ function createApp(db, { scanner = defaultScanner } = {}) {
     return db.prepare(`SELECT * FROM expenses ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY date DESC, id DESC LIMIT 2000`).all(...args);
   });
 
-  route('POST', '/api/expenses', 'admin', ({ body }) => {
+  entryRoutes('/api/expenses', 'expenses', (body) => {
     const category = text(body.category, 60);
     if (!category) throw bad('Please choose what the money was spent on');
-    const r = db.prepare('INSERT INTO expenses (date, kind, category, amount, mode, note) VALUES (?, ?, ?, ?, ?, ?)').run(
-      date(body.date), oneOf(body.kind, ['house', 'business'], 'house or business'), category,
-      num(body.amount, 'amount'), oneOf(body.mode, ['cash', 'online'], 'cash or online'), text(body.note, 300));
-    return { id: Number(r.lastInsertRowid) };
+    return {
+      date: date(body.date), kind: oneOf(body.kind, ['house', 'business'], 'house or business'), category,
+      amount: num(body.amount, 'amount'), mode: oneOf(body.mode, ['cash', 'online'], 'cash or online'), note: text(body.note, 300),
+    };
   });
-  route('DELETE', '/api/expenses/:id', 'admin', del('expenses'));
 
   // ----- settings & backup -----
 
