@@ -224,27 +224,27 @@ function ledger(db, partyId, from, to) {
     const fat = r.fat ? `, fat ${r.fat}` : '';
     push(r.date, 'milk_in', `Milk given – ${r.milk_type}, ${r.shift} (${r.qty} L${fat} @ ₹${r.rate})`,
       r.amount, 0, r.shift === 'morning' ? 1 : 2,
-      { qty: r.qty, fat: r.fat, rate: r.rate, milk_type: r.milk_type, shift: r.shift });
+      { qty: r.qty, fat: r.fat, rate: r.rate, milk_type: r.milk_type, shift: r.shift, mode: null });
   }
   for (const r of db.prepare('SELECT * FROM milk_sales WHERE party_id = ?').all(partyId)) {
     const paid = r.mode === 'credit' ? 0 : r.amount;
     push(r.date, 'milk_out', `Milk taken – ${r.milk_type} (${r.qty} L @ ₹${r.rate}) · ${MODE_LABEL[r.mode]}`,
-      paid, r.amount, 3, { qty: r.qty, milk_type: r.milk_type });
+      paid, r.amount, 3, { qty: r.qty, rate: r.rate, milk_type: r.milk_type, mode: r.mode });
   }
   for (const r of db.prepare('SELECT s.*, i.name AS item, i.unit FROM feed_sales s JOIN feed_items i ON i.id = s.item_id WHERE s.party_id = ?').all(partyId)) {
     const paid = r.mode === 'account' ? 0 : r.amount;
     push(r.date, 'feed', `Feed – ${r.item} (${r.qty} ${r.unit} @ ₹${r.rate}) · ${MODE_LABEL[r.mode]}`,
-      paid, r.amount, 4, { qty: r.qty, item: r.item });
+      paid, r.amount, 4, { qty: r.qty, rate: r.rate, item: r.item, unit: r.unit, mode: r.mode });
   }
   for (const r of db.prepare('SELECT p.*, i.name AS item, i.unit FROM feed_purchases p JOIN feed_items i ON i.id = p.item_id WHERE p.party_id = ?').all(partyId)) {
     const paid = r.mode === 'account' ? 0 : r.amount;
     push(r.date, 'feed_supply', `Feed supplied – ${r.item} (${r.qty} ${r.unit} @ ₹${r.rate}) · ${MODE_LABEL[r.mode]}`,
-      r.amount, paid, 4);
+      r.amount, paid, 4, { qty: r.qty, rate: r.rate, item: r.item, unit: r.unit, mode: r.mode });
   }
   for (const r of db.prepare('SELECT * FROM payments WHERE party_id = ?').all(partyId)) {
     const note = r.note ? ` – ${r.note}` : '';
-    if (r.direction === 'out') push(r.date, 'pay_out', `Paid by dairy (${MODE_LABEL[r.mode]})${note}`, 0, r.amount, 5, { mode: r.mode });
-    else push(r.date, 'pay_in', `Received by dairy (${MODE_LABEL[r.mode]})${note}`, r.amount, 0, 5, { mode: r.mode });
+    if (r.direction === 'out') push(r.date, 'pay_out', `Paid by dairy (${MODE_LABEL[r.mode]})${note}`, 0, r.amount, 5, { mode: r.mode, note: r.note });
+    else push(r.date, 'pay_in', `Received by dairy (${MODE_LABEL[r.mode]})${note}`, r.amount, 0, 5, { mode: r.mode, note: r.note });
   }
   rows.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.sort - b.sort));
 

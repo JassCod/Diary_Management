@@ -50,7 +50,7 @@
 [hidden] { display: none !important; }
 html, body { margin: 0; }
 body {
-  font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
+  font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Noto Sans Gurmukhi", "Raavi", sans-serif;
   background: var(--bg);
   color: var(--ink);
   -webkit-tap-highlight-color: transparent;
@@ -73,6 +73,8 @@ h3 { font-size: 1rem; }
 }
 .topbar .logo { width: 32px; height: 32px; border-radius: 9px; flex: none; }
 .topbar .title { font-weight: 700; font-size: 1.05rem; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lang-row { display: flex; justify-content: flex-end; margin-bottom: 8px; }
+.lang-row .lang-btn { background: var(--card); color: var(--brand); border: 1.5px solid var(--line); border-radius: 10px; padding: 8px 14px; font: inherit; font-weight: 700; cursor: pointer; }
 .topbar button { background: rgba(255,255,255,.16); color: inherit; border: 0; border-radius: 10px; padding: 8px 12px; font: inherit; font-size: .9rem; cursor: pointer; }
 main { padding: 16px; padding-bottom: 96px; max-width: 1100px; margin: 0 auto; }
 

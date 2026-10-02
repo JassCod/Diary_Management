@@ -1,5 +1,6 @@
 'use strict';
-/* Milk Dairy – single page web app (owner panel + customer portal). */
+/* Milk Dairy – single page web app (owner panel + customer portal).
+   Every visible string goes through t() from i18n.js (English / ਪੰਜਾਬੀ). */
 
 // ================= helpers =================
 
@@ -34,33 +35,41 @@ function iso(d) {
 const today = () => iso(new Date());
 function addDays(s, n) { const d = new Date(s + 'T00:00:00'); d.setDate(d.getDate() + n); return iso(d); }
 function monthStart(s = today()) { return s.slice(0, 8) + '01'; }
+// Punjabi month/day names are built in: not every phone browser ships them.
+const PA_MONTHS = ['ਜਨਵਰੀ', 'ਫ਼ਰਵਰੀ', 'ਮਾਰਚ', 'ਅਪ੍ਰੈਲ', 'ਮਈ', 'ਜੂਨ', 'ਜੁਲਾਈ', 'ਅਗਸਤ', 'ਸਤੰਬਰ', 'ਅਕਤੂਬਰ', 'ਨਵੰਬਰ', 'ਦਸੰਬਰ'];
+const PA_DAYS = ['ਐਤਵਾਰ', 'ਸੋਮਵਾਰ', 'ਮੰਗਲਵਾਰ', 'ਬੁੱਧਵਾਰ', 'ਵੀਰਵਾਰ', 'ਸ਼ੁੱਕਰਵਾਰ', 'ਸ਼ਨਿੱਚਰਵਾਰ'];
 function fmtDate(s, withYear = false) {
   if (!s) return '';
   const d = new Date(s + 'T00:00:00');
+  if (getLang() === 'pa') return `${String(d.getDate()).padStart(2, '0')} ${PA_MONTHS[d.getMonth()]}${withYear ? ' ' + d.getFullYear() : ''}`;
   return d.toLocaleDateString('en-IN', withYear ? { day: '2-digit', month: 'short', year: 'numeric' } : { day: '2-digit', month: 'short' });
 }
 function fmtDay(s) {
   const d = new Date(s + 'T00:00:00');
+  if (getLang() === 'pa') return `${PA_DAYS[d.getDay()]}, ${d.getDate()} ${PA_MONTHS[d.getMonth()]} ${d.getFullYear()}`;
   return d.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 }
 const defaultShift = () => (new Date().getHours() < 14 ? 'morning' : 'evening');
 const initials = (name) => String(name || '?').trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
 
-const KIND = {
-  farmer: 'Farmer (sells milk)',
-  buyer: 'Milk buyer',
-  company: 'Milk company',
-  feed: 'Feed customer',
-  supplier: 'Feed supplier',
-};
-const KIND_SHORT = { farmer: 'Farmer', buyer: 'Buyer', company: 'Company', feed: 'Feed', supplier: 'Supplier' };
-const MODE = { cash: 'Cash', online: 'Online', credit: 'Udhaar', account: 'Khata' };
+const KIND = () => ({
+  farmer: t('Farmer (sells milk)'),
+  buyer: t('Milk buyer'),
+  company: t('Milk company'),
+  feed: t('Feed customer'),
+  supplier: t('Feed supplier'),
+});
+const KIND_SHORT = (k) => t({ farmer: 'Farmer', buyer: 'Buyer', company: 'Company', feed: 'Feed', supplier: 'Supplier' }[k] || k);
+const MODE = (m) => t({ cash: 'Cash', online: 'Online', credit: 'Udhaar', account: 'Khata' }[m] || m);
+const TYPE = (m) => t(m === 'cow' ? 'Cow' : 'Buffalo');
+const typeBadge = (m) => `<span class="badge ${m}">${TYPE(m)}</span>`;
+const SHIFT = (s) => (s === 'morning' ? '🌅 ' + t('Morning') : '🌇 ' + t('Evening'));
 
 function balanceText(b) {
-  if (Math.abs(b) < 0.005) return { text: 'All settled', cls: '', short: 'Settled' };
+  if (Math.abs(b) < 0.005) return { text: t('All settled'), cls: '', short: t('Settled') };
   return b > 0
-    ? { text: `Dairy has to pay ${money(b)}`, cls: 'good', short: `Pay ${money(b)}` }
-    : { text: `Has to pay dairy ${money(-b)}`, cls: 'bad', short: `Due ${money(-b)}` };
+    ? { text: t('Dairy has to pay {amt}', { amt: money(b) }), cls: 'good', short: t('Pay {amt}', { amt: money(b) }) }
+    : { text: t('Has to pay dairy {amt}', { amt: money(-b) }), cls: 'bad', short: t('Due {amt}', { amt: money(-b) }) };
 }
 
 async function api(method, path, body) {
@@ -83,11 +92,11 @@ async function api(method, path, body) {
 
 let toastTimer;
 function toast(msg, err = false) {
-  const t = $('#toast');
-  t.textContent = msg;
-  t.className = 'show' + (err ? ' err' : '');
+  const box = $('#toast');
+  box.textContent = err ? tError(msg) : t(msg);
+  box.className = 'show' + (err ? ' err' : '');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { t.className = ''; }, 2600);
+  toastTimer = setTimeout(() => { box.className = ''; }, 2600);
 }
 
 function setAuth(token, role) {
@@ -116,11 +125,22 @@ function seg(name, options, value) {
     <label><input type="radio" name="${name}" value="${esc(v)}" ${v === value ? 'checked' : ''}><span class="${cls || ''}">${label}</span></label>`).join('')}</div>`;
 }
 const field = (label, inner) => `<label class="f">${label}${inner}</label>`;
+const milkTypeSeg = (value = 'cow') => seg('milk_type', [['cow', '🐄 ' + t('Cow'), 'cow'], ['buffalo', '🐃 ' + t('Buffalo'), 'buffalo']], value);
+const cashOnlineSeg = (value = 'cash') => seg('mode', [['cash', '💵 ' + t('Cash'), ''], ['online', '📱 ' + t('Online / UPI')]], value);
+
+// Language switch button (used in the top bar, login and portal).
+const langBtn = () => `<button type="button" class="lang-btn" data-lang="${getLang() === 'pa' ? 'en' : 'pa'}">${getLang() === 'pa' ? 'English' : 'ਪੰਜਾਬੀ'}</button>`;
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-lang]');
+  if (!b) return;
+  setLang(b.dataset.lang);
+  router();
+});
 
 // ----- modal -----
 const modal = $('#modal');
 function openModal(title, html) {
-  modal.innerHTML = `<div class="m-head"><h2>${esc(title)}</h2><button class="icon-btn" data-close aria-label="Close">✕</button></div><div class="m-body">${html}</div>`;
+  modal.innerHTML = `<div class="m-head"><h2>${esc(title)}</h2><button class="icon-btn" data-close aria-label="${t('Close')}">✕</button></div><div class="m-body">${html}</div>`;
   modal.showModal();
   $('[data-close]', modal).onclick = () => modal.close();
   return modal;
@@ -129,7 +149,7 @@ modal.addEventListener('click', (e) => { if (e.target === modal) modal.close(); 
 
 async function confirmBox(msg) {
   return new Promise((resolve) => {
-    openModal('Please confirm', `<p>${esc(msg)}</p><div class="row-actions"><button class="btn danger" id="yes">Yes, delete</button><button class="btn plain" id="no">Cancel</button></div>`);
+    openModal(t('Please confirm'), `<p>${esc(msg)}</p><div class="row-actions"><button class="btn danger" id="yes">${t('Yes, delete')}</button><button class="btn plain" id="no">${t('Cancel')}</button></div>`);
     $('#yes', modal).onclick = () => { modal.close(); resolve(true); };
     $('#no', modal).onclick = () => { modal.close(); resolve(false); };
     modal.addEventListener('close', () => resolve(false), { once: true });
@@ -143,7 +163,7 @@ async function loadSettings() { S.settings = await api('GET', '/api/settings'); 
 const partyById = (id) => S.parties.find((p) => p.id === Number(id));
 
 // ----- person picker (search by name, code, village or phone) -----
-function picker(name, { placeholder = 'Search name / code / village', kinds = [], value = null } = {}) {
+function picker(name, { placeholder = t('Search name / code / village'), kinds = [], value = null } = {}) {
   const p = value ? partyById(value) : null;
   return `<div class="picker" data-name="${name}" data-kinds="${kinds.join(',')}">
     <input type="text" class="picker-input" placeholder="${esc(placeholder)}" autocomplete="off" value="${p ? esc(pLabel(p)) : ''}">
@@ -155,7 +175,7 @@ function picker(name, { placeholder = 'Search name / code / village', kinds = []
 const pLabel = (p) => `${p.code ? p.code + ' · ' : ''}${p.name}`;
 const pInfo = (p) => {
   const b = balanceText(p.balance);
-  return `${esc(KIND_SHORT[p.kind])}${p.village ? ' · ' + esc(p.village) : ''} · <span class="${b.cls}-t">${b.text}</span>`;
+  return `${esc(KIND_SHORT(p.kind))}${p.village ? ' · ' + esc(p.village) : ''} · <span class="${b.cls}-t">${b.text}</span>`;
 };
 
 function initPickers(root) {
@@ -191,8 +211,8 @@ function initPickers(root) {
         .slice(0, 8);
       hl = 0;
       list.innerHTML = matches.length
-        ? matches.map((p, i) => `<button type="button" data-i="${i}" class="${i === 0 ? 'hl' : ''}"><span>${esc(pLabel(p))}<br><small>${esc(p.village || '')} ${esc(p.phone || '')}</small></span><small>${esc(KIND_SHORT[p.kind])}</small></button>`).join('')
-        : '<div class="empty">No match. Add the person in “People”.</div>';
+        ? matches.map((p, i) => `<button type="button" data-i="${i}" class="${i === 0 ? 'hl' : ''}"><span>${esc(pLabel(p))}<br><small>${esc(p.village || '')} ${esc(p.phone || '')}</small></span><small>${esc(KIND_SHORT(p.kind))}</small></button>`).join('')
+        : `<div class="empty">${t('No match. Add the person in “People”.')}</div>`;
       list.classList.add('open');
     };
     input.addEventListener('input', () => { hidden.value = ''; info.innerHTML = ''; render(); });
@@ -222,40 +242,41 @@ function wireDeletes(root, after) {
   root.addEventListener('click', async (e) => {
     const b = e.target.closest('[data-del]');
     if (!b) return;
-    if (!(await confirmBox('Delete this entry? This cannot be undone.'))) return;
+    if (!(await confirmBox(t('Delete this entry? This cannot be undone.')))) return;
     try { await api('DELETE', b.dataset.del); toast('Deleted'); after(); } catch (err) { toast(err.message, true); }
   });
 }
+const delBtn = (path) => `<button class="icon-btn" data-del="${path}" aria-label="${t('Delete')}">🗑</button>`;
+const empty = (msg) => `<div class="empty">${t(msg)}</div>`;
 
 // Range chooser used by reports, ledgers and the customer portal.
 function rangePresets() {
-  const t = today();
-  const d = new Date(t + 'T00:00:00');
-  const lastMonthEnd = addDays(monthStart(t), -1);
-  const day = d.getDate();
+  const now = today();
+  const day = new Date(now + 'T00:00:00').getDate();
+  const lastMonthEnd = addDays(monthStart(now), -1);
   // Common 10-day milk billing cycles: 1–10, 11–20, 21–end.
   const cycStart = day <= 10 ? 1 : day <= 20 ? 11 : 21;
-  const cyc = t.slice(0, 8) + String(cycStart).padStart(2, '0');
+  const cyc = now.slice(0, 8) + String(cycStart).padStart(2, '0');
   return [
-    ['today', 'Today', t, t],
-    ['cycle', 'This 10 days', cyc, t],
-    ['month', 'This month', monthStart(t), t],
+    ['today', 'Today', now, now],
+    ['cycle', 'This 10 days', cyc, now],
+    ['month', 'This month', monthStart(now), now],
     ['lastmonth', 'Last month', monthStart(lastMonthEnd), lastMonthEnd],
-    ['year', 'This year', t.slice(0, 4) + '-01-01', t],
+    ['year', 'This year', now.slice(0, 4) + '-01-01', now],
   ];
 }
 function rangeBar(from, to) {
   const presets = rangePresets();
   const on = presets.findIndex(([, , f, tt]) => f === from && tt === to);
-  return `<div class="chips no-print">${presets.map(([k, label, f, tt], i) =>
-    `<button type="button" class="chip ${i === on ? 'on' : ''}" data-range="${f}|${tt}">${label}</button>`).join('')}</div>
+  return `<div class="chips no-print">${presets.map(([, label, f, tt], i) =>
+    `<button type="button" class="chip ${i === on ? 'on' : ''}" data-range="${f}|${tt}">${t(label)}</button>`).join('')}</div>
     <form class="grid two no-print range-form" style="margin-bottom:16px">
-      ${field('From', `<input type="date" name="from" value="${from}" required>`)}
-      ${field('To', `<input type="date" name="to" value="${to}" required>`)}
+      ${field(t('From'), `<input type="date" name="from" value="${from}" required>`)}
+      ${field(t('To'), `<input type="date" name="to" value="${to}" required>`)}
     </form>`;
 }
 function wireRange(root, cb) {
-  $$('[data-range]', root).forEach((b) => b.addEventListener('click', () => { const [f, t] = b.dataset.range.split('|'); cb(f, t); }));
+  $$('[data-range]', root).forEach((b) => b.addEventListener('click', () => { const [f, tt] = b.dataset.range.split('|'); cb(f, tt); }));
   const form = $('.range-form', root);
   if (form) form.addEventListener('change', () => { const d = formData(form); if (d.from && d.to) cb(d.from, d.to); });
 }
@@ -281,17 +302,17 @@ function shell(active, title) {
   <div class="shell">
     <nav class="sidebar">
       <div class="brand"><img src="icon.svg" alt=""><span>${name}</span></div>
-      ${NAV.map(([k, ico, label]) => `<a href="#/${k}" class="${k === active ? 'on' : ''}"><span class="nav-ico">${ico}</span>${label}</a>`).join('')}
+      ${NAV.map(([k, ico, label]) => `<a href="#/${k}" class="${k === active ? 'on' : ''}"><span class="nav-ico">${ico}</span>${t(label)}</a>`).join('')}
       <div class="grow"></div>
-      <a href="#/logout"><span class="nav-ico">🚪</span>Log out</a>
+      <a href="#/logout"><span class="nav-ico">🚪</span>${t('Log out')}</a>
     </nav>
     <div>
-      <header class="topbar"><img class="logo" src="icon.svg" alt=""><div class="title">${esc(title || S.status?.dairy_name || 'Milk Dairy')}</div></header>
+      <header class="topbar"><img class="logo" src="icon.svg" alt=""><div class="title">${esc(title ? t(title) : S.status?.dairy_name || 'Milk Dairy')}</div>${langBtn()}</header>
       <main id="main"></main>
     </div>
     <nav class="bottomnav">
-      ${NAV.slice(0, 4).map(([k, ico, label]) => `<a href="#/${k}" class="${k === active ? 'on' : ''}"><span class="nav-ico">${ico}</span>${label}</a>`).join('')}
-      <a href="#/more" class="${isMore ? 'on' : ''}"><span class="nav-ico">☰</span>More</a>
+      ${NAV.slice(0, 4).map(([k, ico, label]) => `<a href="#/${k}" class="${k === active ? 'on' : ''}"><span class="nav-ico">${ico}</span>${t(label)}</a>`).join('')}
+      <a href="#/more" class="${isMore ? 'on' : ''}"><span class="nav-ico">☰</span>${t('More')}</a>
     </nav>
   </div>`;
   return $('#main');
@@ -300,10 +321,11 @@ function shell(active, title) {
 async function router() {
   const hash = location.hash.replace(/^#\/?/, '') || '';
   const [page, ...rest] = hash.split('/');
-  modal.open && modal.close();
+  if (modal.open) modal.close();
+  document.documentElement.lang = getLang();
 
   if (!S.status) {
-    try { S.status = await api('GET', '/api/status'); } catch (e) { app.innerHTML = `<div class="boot">Cannot reach the server. ${esc(e.message)}</div>`; return; }
+    try { S.status = await api('GET', '/api/status'); } catch (e) { app.innerHTML = `<div class="boot">${t('Cannot reach the server.')} ${esc(e.message)}</div>`; return; }
   }
   document.title = S.status.dairy_name || 'Milk Dairy';
 
@@ -340,14 +362,15 @@ window.addEventListener('hashchange', router);
 function pageSetup() {
   app.innerHTML = `
   <div class="login-wrap"><div class="login">
-    <div class="hero"><img src="icon.svg" alt=""><h1>Welcome! Let’s set up your dairy</h1><p class="sub">This takes 10 seconds.</p></div>
+    <div class="lang-row">${langBtn()}</div>
+    <div class="hero"><img src="icon.svg" alt=""><h1>${t('Welcome! Let’s set up your dairy')}</h1><p class="sub">${t('This takes 10 seconds.')}</p></div>
     <form class="card" id="f">
       <div class="grid">
-        ${field('Dairy name', '<input name="dairy_name" placeholder="e.g. Waheguru Milk Dairy" required>')}
-        ${field('Owner password (keep it secret)', '<input name="password" type="password" minlength="4" required autocomplete="new-password">')}
-        ${field('Type password again', '<input name="password2" type="password" minlength="4" required autocomplete="new-password">')}
+        ${field(t('Dairy name'), `<input name="dairy_name" placeholder="${t('e.g. Waheguru Milk Dairy')}" required>`)}
+        ${field(t('Owner password (keep it secret)'), '<input name="password" type="password" minlength="4" required autocomplete="new-password">')}
+        ${field(t('Type password again'), '<input name="password2" type="password" minlength="4" required autocomplete="new-password">')}
       </div>
-      <button class="btn block" type="submit">Start</button>
+      <button class="btn block" type="submit">${t('Start')}</button>
     </form>
   </div></div>`;
   onSubmit($('#f'), async (d) => {
@@ -364,21 +387,22 @@ function pageLogin() {
   const tab = sessionStorage.getItem('loginTab') || 'customer';
   app.innerHTML = `
   <div class="login-wrap"><div class="login">
+    <div class="lang-row">${langBtn()}</div>
     <div class="hero"><img src="icon.svg" alt=""><h1>${esc(S.status.dairy_name)}</h1>
       ${S.status.dairy_phone ? `<p class="sub">📞 ${esc(S.status.dairy_phone)}</p>` : ''}</div>
     <div class="card">
-      <div style="margin-bottom:14px">${seg('who', [['customer', '👨‍🌾 Customer'], ['admin', '🏪 Dairy owner']], tab)}</div>
+      <div style="margin-bottom:14px">${seg('who', [['customer', '👨‍🌾 ' + t('Customer')], ['admin', '🏪 ' + t('Dairy owner')]], tab)}</div>
       <form id="fc" ${tab !== 'customer' ? 'hidden' : ''}>
-        <p class="sub" style="margin-top:0">See your milk, feed and payment record.</p>
+        <p class="sub" style="margin-top:0">${t('See your milk, feed and payment record.')}</p>
         <div class="grid">
-          ${field('Mobile number', '<input name="phone" type="tel" inputmode="numeric" required autocomplete="tel">')}
-          ${field('PIN (ask the dairy)', '<input name="pin" type="password" inputmode="numeric" pattern="[0-9]{4,6}" required>')}
+          ${field(t('Mobile number'), '<input name="phone" type="tel" inputmode="numeric" required autocomplete="tel">')}
+          ${field(t('PIN (ask the dairy)'), '<input name="pin" type="password" inputmode="numeric" pattern="[0-9]{4,6}" required>')}
         </div><br>
-        <button class="btn block" type="submit">See my account</button>
+        <button class="btn block" type="submit">${t('See my account')}</button>
       </form>
       <form id="fa" ${tab !== 'admin' ? 'hidden' : ''}>
-        <div class="grid">${field('Password', '<input name="password" type="password" required autocomplete="current-password">')}</div><br>
-        <button class="btn block" type="submit">Log in</button>
+        <div class="grid">${field(t('Password'), '<input name="password" type="password" required autocomplete="current-password">')}</div><br>
+        <button class="btn block" type="submit">${t('Log in')}</button>
       </form>
     </div>
   </div></div>`;
@@ -392,11 +416,12 @@ function pageLogin() {
 
 async function pageHome() {
   const main = shell('home');
-  main.innerHTML = '<div class="empty">Loading…</div>';
+  main.innerHTML = empty('Loading…');
   const d = await api('GET', `/api/dashboard?today=${today()}`);
   const m = d.month;
   const tm = (type, shift) => d.today_milk.filter((x) => x.milk_type === type && (!shift || x.shift === shift)).reduce((s, x) => s + x.qty, 0);
   const todayAmt = d.today_milk.reduce((s, x) => s + x.amount, 0);
+  const split = (shift) => `${t('Cow')} ${qty(tm('cow', shift))} · ${t('Buffalo')} ${qty(tm('buffalo', shift))}`;
 
   // 7-day chart
   const days = Array.from({ length: 7 }, (_, i) => addDays(d.today, i - 6));
@@ -408,64 +433,64 @@ async function pageHome() {
   const max = Math.max(1, ...vals.map((v) => v.cow + v.buf));
 
   main.innerHTML = `
-    <div class="page-head"><div><h1>Namaste 🙏</h1><div class="sub">${fmtDay(d.today)}</div></div></div>
+    <div class="page-head"><div><h1>${t('Namaste')} 🙏</h1><div class="sub">${fmtDay(d.today)}</div></div></div>
 
     <div class="quick">
-      <a href="#/milk/collect"><span>🥛</span>Milk entry</a>
-      <a href="#/milk/out"><span>🚚</span>Milk out / Sale</a>
-      <a href="#/feed/sell"><span>🌾</span>Sell feed</a>
-      <a href="#/money"><span>💸</span>Pay / Receive</a>
-      <a href="#/expenses"><span>🧾</span>Add expense</a>
+      <a href="#/milk/collect"><span>🥛</span>${t('Milk entry')}</a>
+      <a href="#/milk/out"><span>🚚</span>${t('Milk out / Sale')}</a>
+      <a href="#/feed/sell"><span>🌾</span>${t('Sell feed')}</a>
+      <a href="#/money"><span>💸</span>${t('Pay / Receive')}</a>
+      <a href="#/expenses"><span>🧾</span>${t('Add expense')}</a>
     </div>
 
-    ${d.low_feed.length ? `<div class="alert">⚠️ Feed stock low: ${d.low_feed.map((i) => `${esc(i.name)} (${qty(i.stock)} ${esc(i.unit)})`).join(', ')}</div>` : ''}
+    ${d.low_feed.length ? `<div class="alert">⚠️ ${t('Feed stock low:')} ${d.low_feed.map((i) => `${esc(i.name)} (${qty(i.stock)} ${esc(t(i.unit))})`).join(', ')}</div>` : ''}
 
-    <h2 style="margin-bottom:10px">❄️ Cold storage now</h2>
+    <h2 style="margin-bottom:10px">❄️ ${t('Cold storage now')}</h2>
     <div class="grid two" style="margin-bottom:16px">
-      <div class="stat cow"><div class="k">Cow milk</div><div class="v">${qty(d.stock.cow)} L</div></div>
-      <div class="stat buf"><div class="k">Buffalo milk</div><div class="v">${qty(d.stock.buffalo)} L</div></div>
+      <div class="stat cow"><div class="k">${t('Cow milk')}</div><div class="v">${qty(d.stock.cow)} ${t('L')}</div></div>
+      <div class="stat buf"><div class="k">${t('Buffalo milk')}</div><div class="v">${qty(d.stock.buffalo)} ${t('L')}</div></div>
     </div>
-    ${d.last_pickup ? `<p class="sub" style="margin:-8px 0 16px">Last company pickup: ${fmtDate(d.last_pickup.date)} · ${qty(d.last_pickup.qty)} L</p>` : ''}
+    ${d.last_pickup ? `<p class="sub" style="margin:-8px 0 16px">${t('Last company pickup:')} ${fmtDate(d.last_pickup.date)} · ${qty(d.last_pickup.qty)} ${t('L')}</p>` : ''}
 
-    <h2 style="margin-bottom:10px">Today’s collection</h2>
+    <h2 style="margin-bottom:10px">${t('Today’s collection')}</h2>
     <div class="grid four" style="margin-bottom:16px">
-      <div class="stat"><div class="k">🌅 Morning</div><div class="v">${qty(tm('cow', 'morning') + tm('buffalo', 'morning'))} L</div><div class="s">Cow ${qty(tm('cow', 'morning'))} · Buffalo ${qty(tm('buffalo', 'morning'))}</div></div>
-      <div class="stat"><div class="k">🌇 Evening</div><div class="v">${qty(tm('cow', 'evening') + tm('buffalo', 'evening'))} L</div><div class="s">Cow ${qty(tm('cow', 'evening'))} · Buffalo ${qty(tm('buffalo', 'evening'))}</div></div>
-      <div class="stat"><div class="k">Milk bought today</div><div class="v">${money(todayAmt)}</div></div>
-      <div class="stat"><div class="k">Entries today</div><div class="v">${d.today_milk.reduce((s, x) => s + x.n, 0)}</div></div>
+      <div class="stat"><div class="k">${SHIFT('morning')}</div><div class="v">${qty(tm('cow', 'morning') + tm('buffalo', 'morning'))} ${t('L')}</div><div class="s">${split('morning')}</div></div>
+      <div class="stat"><div class="k">${SHIFT('evening')}</div><div class="v">${qty(tm('cow', 'evening') + tm('buffalo', 'evening'))} ${t('L')}</div><div class="s">${split('evening')}</div></div>
+      <div class="stat"><div class="k">${t('Milk bought today')}</div><div class="v">${money(todayAmt)}</div></div>
+      <div class="stat"><div class="k">${t('Entries today')}</div><div class="v">${d.today_milk.reduce((s, x) => s + x.n, 0)}</div></div>
     </div>
 
-    <h2 style="margin-bottom:10px">💰 Where is my money</h2>
+    <h2 style="margin-bottom:10px">💰 ${t('Where is my money')}</h2>
     <div class="grid four" style="margin-bottom:16px">
-      <div class="stat"><div class="k">💵 Cash in hand</div><div class="v">${money(d.money.cash)}</div></div>
-      <div class="stat"><div class="k">📱 Online / Bank</div><div class="v">${money(d.money.online)}</div></div>
-      <div class="stat good"><div class="k">To receive (from people)</div><div class="v">${money(d.to_receive)}</div></div>
-      <div class="stat bad"><div class="k">To pay (to people)</div><div class="v">${money(d.to_pay)}</div></div>
+      <div class="stat"><div class="k">💵 ${t('Cash in hand')}</div><div class="v">${money(d.money.cash)}</div></div>
+      <div class="stat"><div class="k">📱 ${t('Online / Bank')}</div><div class="v">${money(d.money.online)}</div></div>
+      <div class="stat good"><div class="k">${t('To receive (from people)')}</div><div class="v">${money(d.to_receive)}</div></div>
+      <div class="stat bad"><div class="k">${t('To pay (to people)')}</div><div class="v">${money(d.to_pay)}</div></div>
     </div>
 
     <div class="cols">
       <div class="card">
-        <div class="card-head"><h2>This month</h2><a href="#/reports" class="btn sm ghost">Full report</a></div>
+        <div class="card-head"><h2>${t('This month')}</h2><a href="#/reports" class="btn sm ghost">${t('Full report')}</a></div>
         <div class="kv">
-          <div>Milk sold</div><div>${money(m.milk_sold.amount)}</div>
-          <div>Milk bought</div><div>− ${money(m.milk_bought.amount)}</div>
-          <div>Feed profit</div><div>${money(m.feed_margin)}</div>
-          <div>Business expenses</div><div>− ${money(m.business_expenses)}</div>
-          <div class="total">Business profit</div><div class="total ${m.profit >= 0 ? 'good-t' : 'bad-t'}">${money(m.profit)}</div>
-          <div>House expenses</div><div>− ${money(m.house_expenses)}</div>
-          <div class="total">Saved</div><div class="total ${m.savings >= 0 ? 'good-t' : 'bad-t'}">${money(m.savings)}</div>
+          <div>${t('Milk sold')}</div><div>${money(m.milk_sold.amount)}</div>
+          <div>${t('Milk bought')}</div><div>− ${money(m.milk_bought.amount)}</div>
+          <div>${t('Feed profit')}</div><div>${money(m.feed_margin)}</div>
+          <div>${t('Business expenses')}</div><div>− ${money(m.business_expenses)}</div>
+          <div class="total">${t('Business profit')}</div><div class="total ${m.profit >= 0 ? 'good-t' : 'bad-t'}">${money(m.profit)}</div>
+          <div>${t('House expenses')}</div><div>− ${money(m.house_expenses)}</div>
+          <div class="total">${t('Saved')}</div><div class="total ${m.savings >= 0 ? 'good-t' : 'bad-t'}">${money(m.savings)}</div>
         </div>
       </div>
       <div class="card">
-        <h2>Last 7 days milk collected</h2>
+        <h2>${t('Last 7 days milk collected')}</h2>
         <div class="bars">${vals.map((v) => `
           <div class="bar"><div class="val">${v.cow + v.buf ? qty(Math.round(v.cow + v.buf)) : ''}</div>
             <div class="stack" style="height:${((v.cow + v.buf) / max) * 100}%">
               <div class="seg-cow" style="flex:${v.cow}"></div><div class="seg-buf" style="flex:${v.buf}"></div>
             </div>
-            <div class="lbl">${fmtDate(v.day).split(' ')[0]}</div></div>`).join('')}
+            <div class="lbl">${v.day.slice(8)}</div></div>`).join('')}
         </div>
-        <div class="legend"><span><i style="background:var(--cow)"></i>Cow</span><span><i style="background:var(--buf)"></i>Buffalo</span></div>
+        <div class="legend"><span><i style="background:var(--cow)"></i>${t('Cow')}</span><span><i style="background:var(--buf)"></i>${t('Buffalo')}</span></div>
       </div>
     </div>`;
 }
@@ -474,8 +499,8 @@ function pageMore() {
   const main = shell('more', 'More');
   main.innerHTML = `
     <div class="quick">
-      ${NAV.slice(4).map(([k, ico, label]) => `<a href="#/${k}"><span>${ico}</span>${label}</a>`).join('')}
-      <a href="#/logout"><span>🚪</span>Log out</a>
+      ${NAV.slice(4).map(([k, ico, label]) => `<a href="#/${k}"><span>${ico}</span>${t(label)}</a>`).join('')}
+      <a href="#/logout"><span>🚪</span>${t('Log out')}</a>
     </div>`;
 }
 
@@ -492,8 +517,8 @@ function rateFor(type, fat) {
 async function pageMilk(tab = 'collect') {
   const main = shell('milk', 'Milk');
   main.innerHTML = `<div class="tabs">
-      <a href="#/milk/collect" class="${tab === 'collect' ? 'on' : ''}">🥛 Buy from farmers</a>
-      <a href="#/milk/out" class="${tab === 'out' ? 'on' : ''}">🚚 Milk out / Sale</a>
+      <a href="#/milk/collect" class="${tab === 'collect' ? 'on' : ''}">🥛 ${t('Buy from farmers')}</a>
+      <a href="#/milk/out" class="${tab === 'out' ? 'on' : ''}">🚚 ${t('Milk out / Sale')}</a>
     </div><div id="milkbody"></div>`;
   await loadParties();
   if (tab === 'out') return milkOut($('#milkbody'));
@@ -504,25 +529,25 @@ function milkCollect(root) {
   const st = { date: sessionStorage.getItem('mc_date') || today(), shift: sessionStorage.getItem('mc_shift') || defaultShift() };
   const lastType = JSON.parse(lsGet('lastType') || '{}');
   const s = S.settings;
-  const rateHint = (t) => (s[`${t}_rate_mode`] === 'fat' ? `₹${s[`${t}_rate`]} × fat` : `₹${s[`${t}_rate`]} / L`);
+  const rateHint = (ty) => (s[`${ty}_rate_mode`] === 'fat' ? t('₹{r} × fat', { r: s[`${ty}_rate`] }) : t('₹{r} / L', { r: s[`${ty}_rate`] }));
 
   root.innerHTML = `
   <div class="cols">
     <form class="card" id="f" autocomplete="off">
-      <h2>New milk entry</h2>
+      <h2>${t('New milk entry')}</h2>
       <div class="grid date-shift">
-        ${field('Date', `<input type="date" name="date" value="${st.date}" required>`)}
-        ${field('Time', seg('shift', [['morning', '🌅 Morning'], ['evening', '🌇 Evening']], st.shift))}
+        ${field(t('Date'), `<input type="date" name="date" value="${st.date}" required>`)}
+        ${field(t('Time'), seg('shift', [['morning', SHIFT('morning')], ['evening', SHIFT('evening')]], st.shift))}
       </div>
-      <div class="grid">${field('Farmer', picker('party_id', { kinds: ['farmer'] }))}</div>
-      <div class="grid">${field('Milk type', seg('milk_type', [['cow', '🐄 Cow', 'cow'], ['buffalo', '🐃 Buffalo', 'buffalo']], 'cow'))}</div>
+      <div class="grid">${field(t('Farmer'), picker('party_id', { kinds: ['farmer'] }))}</div>
+      <div class="grid">${field(t('Milk type'), milkTypeSeg())}</div>
       <div class="grid three">
-        ${field('Litres', '<input name="qty" class="big" type="number" step="0.01" min="0" inputmode="decimal" required>')}
-        ${field('Fat %', '<input name="fat" type="number" step="0.1" min="0" inputmode="decimal">')}
-        ${field(`Rate ₹/L <small id="rh"></small>`, '<input name="rate" type="number" step="0.01" min="0" inputmode="decimal" required>')}
+        ${field(t('Litres'), '<input name="qty" class="big" type="number" step="0.01" min="0" inputmode="decimal" required>')}
+        ${field(t('Fat %'), '<input name="fat" type="number" step="0.1" min="0" inputmode="decimal">')}
+        ${field(`${t('Rate ₹/L')} <small id="rh"></small>`, '<input name="rate" type="number" step="0.01" min="0" inputmode="decimal" required>')}
       </div>
-      <div class="amount-preview"><span>Amount</span><b id="amt">₹0</b></div>
-      <button class="btn block" type="submit">✓ Save entry</button>
+      <div class="amount-preview"><span>${t('Amount')}</span><b id="amt">₹0</b></div>
+      <button class="btn block" type="submit">✓ ${t('Save entry')}</button>
     </form>
     <div class="card">
       <div class="card-head"><h2 id="lh"></h2></div>
@@ -561,20 +586,19 @@ function milkCollect(root) {
 
   async function list() {
     const rows = (await api('GET', `/api/milk/collections?from=${st.date}&to=${st.date}`)).filter((r) => r.shift === st.shift);
-    $('#lh', root).textContent = `${fmtDate(st.date)} · ${st.shift === 'morning' ? '🌅 Morning' : '🌇 Evening'} (${rows.length})`;
-    const t = (ty) => rows.filter((r) => r.milk_type === ty);
-    const sum = (a, k) => a.reduce((s, r) => s + r[k], 0);
-    const fatAvg = (a) => { const w = a.filter((r) => r.fat); const q = sum(w, 'qty'); return q ? (w.reduce((s, r) => s + r.fat * r.qty, 0) / q).toFixed(1) : '–'; };
-    $('#tot', root).innerHTML = `
-      <div class="stat cow"><div class="k">Cow</div><div class="v">${qty(sum(t('cow'), 'qty'))} L</div><div class="s">${money(sum(t('cow'), 'amount'))} · avg fat ${fatAvg(t('cow'))}</div></div>
-      <div class="stat buf"><div class="k">Buffalo</div><div class="v">${qty(sum(t('buffalo'), 'qty'))} L</div><div class="s">${money(sum(t('buffalo'), 'amount'))} · avg fat ${fatAvg(t('buffalo'))}</div></div>`;
+    $('#lh', root).textContent = `${fmtDate(st.date)} · ${SHIFT(st.shift)} (${rows.length})`;
+    const ofType = (ty) => rows.filter((r) => r.milk_type === ty);
+    const sum = (a, k) => a.reduce((acc, r) => acc + r[k], 0);
+    const fatAvg = (a) => { const w = a.filter((r) => r.fat); const q = sum(w, 'qty'); return q ? (w.reduce((acc, r) => acc + r.fat * r.qty, 0) / q).toFixed(1) : '–'; };
+    $('#tot', root).innerHTML = ['cow', 'buffalo'].map((ty) => `
+      <div class="stat ${ty === 'cow' ? 'cow' : 'buf'}"><div class="k">${TYPE(ty)}</div><div class="v">${qty(sum(ofType(ty), 'qty'))} ${t('L')}</div><div class="s">${money(sum(ofType(ty), 'amount'))} · ${t('avg fat')} ${fatAvg(ofType(ty))}</div></div>`).join('');
     $('#list', root).innerHTML = rows.length ? `<div class="list">${rows.map((r) => `
       <div class="item">
         <div class="avatar">${esc(r.party_code || initials(r.party_name))}</div>
-        <div class="main"><b>${esc(r.party_name)}</b><small><span class="badge ${r.milk_type}">${r.milk_type}</span> ${qty(r.qty)} L${r.fat ? ` · fat ${r.fat}` : ''} · ₹${r.rate}/L</small></div>
+        <div class="main"><b>${esc(r.party_name)}</b><small>${typeBadge(r.milk_type)} ${qty(r.qty)} ${t('L')}${r.fat ? ` · ${t('fat')} ${r.fat}` : ''} · ₹${r.rate}/${t('L')}</small></div>
         <div class="end"><b>${money(r.amount)}</b></div>
-        <button class="icon-btn" data-del="/api/milk/collections/${r.id}" aria-label="Delete">🗑</button>
-      </div>`).join('')}</div>` : '<div class="empty">No entries yet for this time.</div>';
+        ${delBtn(`/api/milk/collections/${r.id}`)}
+      </div>`).join('')}</div>` : empty('No entries yet for this time.');
   }
   wireDeletes($('#list', root), list);
 
@@ -583,7 +607,7 @@ function milkCollect(root) {
     lastType[d.party_id] = d.milk_type;
     lsSet('lastType', JSON.stringify(lastType));
     const p = partyById(d.party_id);
-    toast(`Saved: ${p ? p.name : ''} ${d.qty} L`);
+    toast(t('Saved: {name} {qty} L', { name: p ? p.name : '', qty: d.qty }));
     f.qty.value = ''; f.fat.value = ''; rateTouched = false;
     pick.clear(); updRate();
     $('.picker-input', f).focus();
@@ -599,48 +623,52 @@ function milkOut(root) {
   <div class="grid two" id="stock" style="margin-bottom:16px"></div>
   <div class="cols">
     <form class="card" id="f" autocomplete="off">
-      <h2>Milk going out of cold storage</h2>
-      <div class="grid">${field('Where did the milk go?', seg('buyer_type', [['company', '🚚 Company van'], ['local', '🏠 Local sale'], ['wastage', '🗑 Waste / home']], last.buyer_type || 'company'))}</div>
+      <h2>${t('Milk going out of cold storage')}</h2>
+      <div class="grid">${field(t('Where did the milk go?'), seg('buyer_type', [['company', '🚚 ' + t('Company van')], ['local', '🏠 ' + t('Local sale')], ['wastage', '🗑 ' + t('Waste / home')]], last.buyer_type || 'company'))}</div>
       <div class="grid two">
-        ${field('Date', `<input type="date" name="date" value="${today()}" required>`)}
-        ${field('Milk type', seg('milk_type', [['cow', '🐄 Cow', 'cow'], ['buffalo', '🐃 Buffalo', 'buffalo']], 'cow'))}
+        ${field(t('Date'), `<input type="date" name="date" value="${today()}" required>`)}
+        ${field(t('Milk type'), milkTypeSeg())}
       </div>
-      <div class="grid" data-show="company local">${field('<span id="plbl">Company</span>', picker('party_id', { kinds: ['company'] }))}</div>
-      <div class="grid" data-show="local">${field('Or buyer name (walk-in)', '<input name="buyer_name" placeholder="Optional">')}</div>
+      <div class="grid" data-show="company local">${field('<span id="plbl"></span>', picker('party_id', { kinds: ['company'] }))}</div>
+      <div class="grid" data-show="local">${field(t('Or buyer name (walk-in)'), `<input name="buyer_name" placeholder="${t('Optional')}">`)}</div>
       <div class="grid three">
-        ${field('Litres', '<input name="qty" class="big" type="number" step="0.01" min="0" inputmode="decimal" required>')}
-        ${field('Fat %', '<input name="fat" type="number" step="0.1" min="0" inputmode="decimal">')}
-        <span data-show="company local">${field('Rate ₹/L', '<input name="rate" type="number" step="0.01" min="0" inputmode="decimal">')}</span>
+        ${field(t('Litres'), '<input name="qty" class="big" type="number" step="0.01" min="0" inputmode="decimal" required>')}
+        ${field(t('Fat %'), '<input name="fat" type="number" step="0.1" min="0" inputmode="decimal">')}
+        <span data-show="company local">${field(t('Rate ₹/L'), '<input name="rate" type="number" step="0.01" min="0" inputmode="decimal">')}</span>
       </div>
       <div data-show="company local">
-        <div class="amount-preview"><span>Amount</span><b id="amt">₹0</b></div>
-        <div class="grid">${field('Payment', seg('mode', [['credit', '📒 Udhaar / later'], ['cash', '💵 Cash'], ['online', '📱 Online']], 'credit'))}</div>
+        <div class="amount-preview"><span>${t('Amount')}</span><b id="amt">₹0</b></div>
+        <div class="grid">${field(t('Payment'), seg('mode', [['credit', '📒 ' + t('Udhaar / later')], ['cash', '💵 ' + t('Cash')], ['online', '📱 ' + t('Online')]], 'credit'))}</div>
       </div>
       <div class="grid two">
-        <span data-show="company">${field('Van / vehicle no.', `<input name="vehicle" value="${esc(last.vehicle || '')}">`)}</span>
-        ${field('Note', '<input name="note" placeholder="Optional">')}
+        <span data-show="company">${field(t('Van / vehicle no.'), `<input name="vehicle" value="${esc(last.vehicle || '')}">`)}</span>
+        ${field(t('Note'), `<input name="note" placeholder="${t('Optional')}">`)}
       </div>
-      <button class="btn block" type="submit">✓ Save</button>
+      <button class="btn block" type="submit">✓ ${t('Save')}</button>
     </form>
-    <div class="card"><h2>Recent (last 30 days)</h2><div id="list"></div></div>
+    <div class="card"><h2>${t('Recent (last 30 days)')}</h2><div id="list"></div></div>
   </div>`;
   const f = $('#f', root);
   initPickers(root);
   const pick = $('.picker', f);
   const upd = () => { $('#amt', root).textContent = money(r2((Number(f.qty.value) || 0) * (Number(f.rate.value) || 0))); };
   const defaultRate = () => {
-    const bt = f.buyer_type.value; const t = f.milk_type.value;
-    if (bt === 'local') f.rate.value = S.settings[`${t}_sale_rate`] || '';
-    else if (bt === 'company') f.rate.value = last[`company_${t}`] || '';
+    const bt = f.buyer_type.value; const ty = f.milk_type.value;
+    if (bt === 'local') f.rate.value = S.settings[`${ty}_sale_rate`] || '';
+    else if (bt === 'company') f.rate.value = last[`company_${ty}`] || '';
     upd();
   };
   const sync = () => {
     const bt = f.buyer_type.value;
     $$('[data-show]', f).forEach((el) => { el.hidden = !el.dataset.show.split(' ').includes(bt); });
-    $('#plbl', f).textContent = bt === 'company' ? 'Company' : 'Buyer (from people list – needed for udhaar)';
+    $('#plbl', f).textContent = bt === 'company' ? t('Company') : t('Buyer (from people list – needed for udhaar)');
     pick.dataset.kinds = bt === 'company' ? 'company' : 'buyer';
     if (bt === 'local' && f.mode.value === 'credit' && !f.party_id.value) f.mode.value = 'cash';
-    if (bt === 'company') { f.mode.value = 'credit'; const c = S.parties.find((p) => p.kind === 'company' && p.active); if (c && !f.party_id.value) { f.party_id.value = c.id; $('.picker-input', f).value = pLabel(c); } }
+    if (bt === 'company') {
+      f.mode.value = 'credit';
+      const c = S.parties.find((p) => p.kind === 'company' && p.active);
+      if (c && !f.party_id.value) { f.party_id.value = c.id; $('.picker-input', f).value = pLabel(c); }
+    }
     defaultRate();
   };
   $$('input[name=buyer_type]', f).forEach((r) => r.addEventListener('change', () => { pick.clear(); sync(); }));
@@ -653,17 +681,17 @@ function milkOut(root) {
       api('GET', `/api/milk/sales?from=${addDays(today(), -30)}`),
     ]);
     $('#stock', root).innerHTML = `
-      <div class="stat cow"><div class="k">❄️ Cow milk in storage</div><div class="v">${qty(dash.stock.cow)} L</div></div>
-      <div class="stat buf"><div class="k">❄️ Buffalo milk in storage</div><div class="v">${qty(dash.stock.buffalo)} L</div></div>`;
+      <div class="stat cow"><div class="k">❄️ ${t('Cow milk in storage')}</div><div class="v">${qty(dash.stock.cow)} ${t('L')}</div></div>
+      <div class="stat buf"><div class="k">❄️ ${t('Buffalo milk in storage')}</div><div class="v">${qty(dash.stock.buffalo)} ${t('L')}</div></div>`;
     const icon = { company: '🚚', local: '🏠', wastage: '🗑' };
     $('#list', root).innerHTML = rows.length ? `<div class="list">${rows.map((r) => `
       <div class="item">
         <div class="avatar">${icon[r.buyer_type]}</div>
-        <div class="main"><b>${esc(r.party_name || r.buyer_name || (r.buyer_type === 'wastage' ? 'Waste / home use' : 'Local sale'))}</b>
-          <small>${fmtDate(r.date)} · <span class="badge ${r.milk_type}">${r.milk_type}</span> ${qty(r.qty)} L${r.fat ? ` · fat ${r.fat}` : ''}${r.vehicle ? ` · ${esc(r.vehicle)}` : ''}</small></div>
-        <div class="end"><b>${r.buyer_type === 'wastage' ? '–' : money(r.amount)}</b>${r.buyer_type !== 'wastage' ? `<small>${MODE[r.mode]}</small>` : ''}</div>
-        <button class="icon-btn" data-del="/api/milk/sales/${r.id}" aria-label="Delete">🗑</button>
-      </div>`).join('')}</div>` : '<div class="empty">Nothing yet.</div>';
+        <div class="main"><b>${esc(r.party_name || r.buyer_name || (r.buyer_type === 'wastage' ? t('Waste / home use') : t('Local sale')))}</b>
+          <small>${fmtDate(r.date)} · ${typeBadge(r.milk_type)} ${qty(r.qty)} ${t('L')}${r.fat ? ` · ${t('fat')} ${r.fat}` : ''}${r.vehicle ? ` · ${esc(r.vehicle)}` : ''}</small></div>
+        <div class="end"><b>${r.buyer_type === 'wastage' ? '–' : money(r.amount)}</b>${r.buyer_type !== 'wastage' ? `<small>${MODE(r.mode)}</small>` : ''}</div>
+        ${delBtn(`/api/milk/sales/${r.id}`)}
+      </div>`).join('')}</div>` : empty('Nothing yet.');
   }
   wireDeletes($('#list', root), refresh);
 
@@ -672,7 +700,7 @@ function milkOut(root) {
     last.buyer_type = d.buyer_type;
     if (d.buyer_type === 'company') { last[`company_${d.milk_type}`] = d.rate; last.vehicle = d.vehicle; }
     lsSet('lastOut', JSON.stringify(last));
-    toast(`Saved: ${d.qty} L ${d.milk_type}`);
+    toast(t('Saved: {qty} L {type}', { qty: d.qty, type: TYPE(d.milk_type) }));
     f.qty.value = ''; f.fat.value = ''; f.note.value = '';
     upd(); refresh();
   });
@@ -682,17 +710,19 @@ function milkOut(root) {
 
 // ================= feed =================
 
+const UNITS = ['bag', 'kg', 'quintal', 'packet', 'litre', 'piece'];
+
 async function pageFeed(tab = 'sell') {
   const main = shell('feed', 'Feed');
   main.innerHTML = `<div class="tabs">
-      <a href="#/feed/sell" class="${tab === 'sell' ? 'on' : ''}">🌾 Sell feed</a>
-      <a href="#/feed/stock" class="${tab === 'stock' ? 'on' : ''}">📦 Stock & items</a>
-      <a href="#/feed/buy" class="${tab === 'buy' ? 'on' : ''}">🚛 Buy stock</a>
+      <a href="#/feed/sell" class="${tab === 'sell' ? 'on' : ''}">🌾 ${t('Sell feed')}</a>
+      <a href="#/feed/stock" class="${tab === 'stock' ? 'on' : ''}">📦 ${t('Stock & items')}</a>
+      <a href="#/feed/buy" class="${tab === 'buy' ? 'on' : ''}">🚛 ${t('Buy stock')}</a>
     </div><div id="feedbody"></div>`;
   await Promise.all([loadParties(), loadItems()]);
   const body = $('#feedbody');
   if (!S.items.length && tab !== 'stock') {
-    body.innerHTML = `<div class="card empty"><p>First add your feed items (like Khal, Choker, Feed bag, Mineral mixture).</p><a class="btn" href="#/feed/stock">+ Add feed items</a></div>`;
+    body.innerHTML = `<div class="card empty"><p>${t('First add your feed items (like Khal, Choker, Feed bag, Mineral mixture).')}</p><a class="btn" href="#/feed/stock">+ ${t('Add feed items')}</a></div>`;
     return;
   }
   if (tab === 'stock') return feedStock(body);
@@ -701,29 +731,29 @@ async function pageFeed(tab = 'sell') {
 }
 
 const itemOptions = (sel) => S.items.filter((i) => i.active).map((i) =>
-  `<option value="${i.id}" ${Number(sel) === i.id ? 'selected' : ''}>${esc(i.name)} — stock ${qty(i.stock)} ${esc(i.unit)}</option>`).join('');
+  `<option value="${i.id}" ${Number(sel) === i.id ? 'selected' : ''}>${esc(i.name)} — ${t('stock')} ${qty(i.stock)} ${esc(t(i.unit))}</option>`).join('');
 
 function feedSell(root) {
   root.innerHTML = `
   <div class="cols">
     <form class="card" id="f" autocomplete="off">
-      <h2>Sell feed</h2>
-      <div class="grid">${field('Customer', picker('party_id', { kinds: ['farmer', 'feed'], placeholder: 'Search customer (leave empty for walk-in)' }))}</div>
-      <div class="grid" id="walkin">${field('Or walk-in buyer name', '<input name="buyer_name" placeholder="Optional">')}</div>
-      <div class="grid">${field('Feed item', `<select name="item_id" required>${itemOptions()}</select>`)}</div>
+      <h2>${t('Sell feed')}</h2>
+      <div class="grid">${field(t('Customer'), picker('party_id', { kinds: ['farmer', 'feed'], placeholder: t('Search customer (leave empty for walk-in)') }))}</div>
+      <div class="grid" id="walkin">${field(t('Or walk-in buyer name'), `<input name="buyer_name" placeholder="${t('Optional')}">`)}</div>
+      <div class="grid">${field(t('Feed item'), `<select name="item_id" required>${itemOptions()}</select>`)}</div>
       <div class="grid two">
-        ${field('Quantity', '<input name="qty" class="big" type="number" step="0.01" min="0" inputmode="decimal" required>')}
-        ${field('Rate ₹', '<input name="rate" type="number" step="0.01" min="0" inputmode="decimal" required>')}
+        ${field(t('Quantity'), '<input name="qty" class="big" type="number" step="0.01" min="0" inputmode="decimal" required>')}
+        ${field(t('Rate ₹'), '<input name="rate" type="number" step="0.01" min="0" inputmode="decimal" required>')}
       </div>
-      <div class="amount-preview"><span>Amount</span><b id="amt">₹0</b></div>
-      <div class="grid">${field('Payment', seg('mode', [['account', '📒 Cut from milk money'], ['cash', '💵 Cash'], ['online', '📱 Online']], 'cash'))}</div>
+      <div class="amount-preview"><span>${t('Amount')}</span><b id="amt">₹0</b></div>
+      <div class="grid">${field(t('Payment'), seg('mode', [['account', '📒 ' + t('Cut from milk money')], ['cash', '💵 ' + t('Cash')], ['online', '📱 ' + t('Online')]], 'cash'))}</div>
       <div class="grid two">
-        ${field('Date', `<input type="date" name="date" value="${today()}" required>`)}
-        ${field('Note', '<input name="note" placeholder="Optional">')}
+        ${field(t('Date'), `<input type="date" name="date" value="${today()}" required>`)}
+        ${field(t('Note'), `<input name="note" placeholder="${t('Optional')}">`)}
       </div>
-      <button class="btn block" type="submit">✓ Save sale</button>
+      <button class="btn block" type="submit">✓ ${t('Save sale')}</button>
     </form>
-    <div class="card"><h2>Recent feed sales</h2><div id="list"></div></div>
+    <div class="card"><h2>${t('Recent feed sales')}</h2><div id="list"></div></div>
   </div>`;
   const f = $('#f', root);
   initPickers(root);
@@ -733,7 +763,7 @@ function feedSell(root) {
   f.qty.addEventListener('input', upd); f.rate.addEventListener('input', upd);
   $('.picker', f).addEventListener('picked', (e) => {
     $('#walkin', root).hidden = !!e.detail;
-    if (e.detail && ['farmer'].includes(e.detail.kind)) f.mode.value = 'account';
+    if (e.detail && e.detail.kind === 'farmer') f.mode.value = 'account';
     f.qty.focus();
   });
 
@@ -742,10 +772,10 @@ function feedSell(root) {
     $('#list', root).innerHTML = rows.length ? `<div class="list">${rows.map((r) => `
       <div class="item">
         <div class="avatar">🌾</div>
-        <div class="main"><b>${esc(r.party_name || r.buyer_name || 'Walk-in')}</b><small>${fmtDate(r.date)} · ${esc(r.item)} · ${qty(r.qty)} ${esc(r.unit)} @ ₹${r.rate}</small></div>
-        <div class="end"><b>${money(r.amount)}</b><small>${MODE[r.mode]}</small></div>
-        <button class="icon-btn" data-del="/api/feed/sales/${r.id}" aria-label="Delete">🗑</button>
-      </div>`).join('')}</div>` : '<div class="empty">No feed sold in last 30 days.</div>';
+        <div class="main"><b>${esc(r.party_name || r.buyer_name || t('Walk-in'))}</b><small>${fmtDate(r.date)} · ${esc(r.item)} · ${qty(r.qty)} ${esc(t(r.unit))} @ ₹${r.rate}</small></div>
+        <div class="end"><b>${money(r.amount)}</b><small>${MODE(r.mode)}</small></div>
+        ${delBtn(`/api/feed/sales/${r.id}`)}
+      </div>`).join('')}</div>` : empty('No feed sold in last 30 days.');
   }
   wireDeletes($('#list', root), async () => { await loadItems(); list(); });
 
@@ -766,35 +796,35 @@ function feedSell(root) {
 function feedStock(root) {
   root.innerHTML = `
   <div class="card">
-    <div class="card-head"><h2>Feed items & stock</h2><button class="btn sm" id="add">+ Add item</button></div>
+    <div class="card-head"><h2>${t('Feed items & stock')}</h2><button class="btn sm" id="add">+ ${t('Add item')}</button></div>
     ${S.items.length ? `<div class="table-wrap"><table>
-      <thead><tr><th>Item</th><th class="n">Stock</th><th class="n">Buy ₹</th><th class="n">Sell ₹</th><th class="n">Stock value</th><th></th></tr></thead>
+      <thead><tr><th>${t('Item')}</th><th class="n">${t('Stock')}</th><th class="n">${t('Buy ₹')}</th><th class="n">${t('Sell ₹')}</th><th class="n">${t('Stock value')}</th><th></th></tr></thead>
       <tbody>${S.items.map((i) => `<tr>
-        <td><b>${esc(i.name)}</b> ${!i.active ? '<span class="badge">hidden</span>' : ''}<br><small class="sub">per ${esc(i.unit)}</small></td>
-        <td class="n"><span class="badge ${i.stock <= i.low_stock ? 'warn' : 'good'}">${qty(i.stock)} ${esc(i.unit)}</span></td>
+        <td><b>${esc(i.name)}</b> ${!i.active ? `<span class="badge">${t('hidden')}</span>` : ''}<br><small class="sub">${t('per {unit}', { unit: esc(t(i.unit)) })}</small></td>
+        <td class="n"><span class="badge ${i.stock <= i.low_stock ? 'warn' : 'good'}">${qty(i.stock)} ${esc(t(i.unit))}</span></td>
         <td class="n">${money(i.purchase_price)}</td><td class="n">${money(i.sale_price)}</td>
         <td class="n">${money(i.stock * i.purchase_price)}</td>
-        <td class="n"><button class="btn sm plain" data-edit="${i.id}">Edit</button></td></tr>`).join('')}</tbody>
-      <tfoot><tr><td colspan="4">Total stock value</td><td class="n">${money(S.items.reduce((s, i) => s + Math.max(0, i.stock) * i.purchase_price, 0))}</td><td></td></tr></tfoot>
-    </table></div>` : '<div class="empty">No feed items yet.</div>'}
+        <td class="n"><button class="btn sm plain" data-edit="${i.id}">${t('Edit')}</button></td></tr>`).join('')}</tbody>
+      <tfoot><tr><td colspan="4">${t('Total stock value')}</td><td class="n">${money(S.items.reduce((s, i) => s + Math.max(0, i.stock) * i.purchase_price, 0))}</td><td></td></tr></tfoot>
+    </table></div>` : empty('No feed items yet.')}
   </div>`;
   $('#add', root).onclick = () => itemForm();
   $$('[data-edit]', root).forEach((b) => (b.onclick = () => itemForm(S.items.find((i) => i.id === Number(b.dataset.edit)))));
 
   function itemForm(it) {
     const i = it || { unit: 'bag', low_stock: 5, active: 1 };
-    const m = openModal(it ? 'Edit feed item' : 'New feed item', `
+    const m = openModal(it ? t('Edit feed item') : t('New feed item'), `
       <form id="fi">
-        <div class="grid">${field('Name', `<input name="name" value="${esc(i.name || '')}" placeholder="e.g. Cattle feed 50kg" required>`)}</div>
+        <div class="grid">${field(t('Name'), `<input name="name" value="${esc(i.name || '')}" placeholder="${t('e.g. Cattle feed 50kg')}" required>`)}</div>
         <div class="grid two">
-          ${field('Unit', `<select name="unit">${['bag', 'kg', 'quintal', 'packet', 'litre', 'piece'].map((u) => `<option ${u === i.unit ? 'selected' : ''}>${u}</option>`).join('')}</select>`)}
-          ${field('Opening stock', `<input name="opening_stock" type="number" step="0.01" value="${i.opening_stock ?? 0}">`)}
-          ${field('Purchase price ₹', `<input name="purchase_price" type="number" step="0.01" min="0" value="${i.purchase_price ?? ''}">`)}
-          ${field('Sale price ₹', `<input name="sale_price" type="number" step="0.01" min="0" value="${i.sale_price ?? ''}">`)}
-          ${field('Warn when stock below', `<input name="low_stock" type="number" step="0.01" min="0" value="${i.low_stock}">`)}
-          ${field('Show in lists', `<select name="active"><option value="1">Yes</option><option value="0" ${!i.active ? 'selected' : ''}>No (hide)</option></select>`)}
+          ${field(t('Unit'), `<select name="unit">${UNITS.map((u) => `<option value="${u}" ${u === i.unit ? 'selected' : ''}>${t(u)}</option>`).join('')}</select>`)}
+          ${field(t('Opening stock'), `<input name="opening_stock" type="number" step="0.01" value="${i.opening_stock ?? 0}">`)}
+          ${field(t('Purchase price ₹'), `<input name="purchase_price" type="number" step="0.01" min="0" value="${i.purchase_price ?? ''}">`)}
+          ${field(t('Sale price ₹'), `<input name="sale_price" type="number" step="0.01" min="0" value="${i.sale_price ?? ''}">`)}
+          ${field(t('Warn when stock below'), `<input name="low_stock" type="number" step="0.01" min="0" value="${i.low_stock}">`)}
+          ${field(t('Show in lists'), `<select name="active"><option value="1">${t('Yes')}</option><option value="0" ${!i.active ? 'selected' : ''}>${t('No (hide)')}</option></select>`)}
         </div>
-        <button class="btn block" type="submit">Save</button>
+        <button class="btn block" type="submit">${t('Save')}</button>
       </form>`);
     onSubmit($('#fi', m), async (d) => {
       d.active = d.active === '1';
@@ -809,22 +839,22 @@ function feedBuy(root) {
   root.innerHTML = `
   <div class="cols">
     <form class="card" id="f" autocomplete="off">
-      <h2>Buy feed stock (bulk)</h2>
-      <div class="grid">${field('Feed item', `<select name="item_id" required>${itemOptions()}</select>`)}</div>
+      <h2>${t('Buy feed stock (bulk)')}</h2>
+      <div class="grid">${field(t('Feed item'), `<select name="item_id" required>${itemOptions()}</select>`)}</div>
       <div class="grid two">
-        ${field('Quantity', '<input name="qty" class="big" type="number" step="0.01" min="0" inputmode="decimal" required>')}
-        ${field('Rate ₹ (per unit)', '<input name="rate" type="number" step="0.01" min="0" inputmode="decimal" required>')}
+        ${field(t('Quantity'), '<input name="qty" class="big" type="number" step="0.01" min="0" inputmode="decimal" required>')}
+        ${field(t('Rate ₹ (per unit)'), '<input name="rate" type="number" step="0.01" min="0" inputmode="decimal" required>')}
       </div>
-      <div class="amount-preview"><span>Total</span><b id="amt">₹0</b></div>
-      <div class="grid">${field('Supplier', picker('party_id', { kinds: ['supplier'], placeholder: 'Search supplier (optional)' }))}</div>
-      <div class="grid">${field('Payment', seg('mode', [['cash', '💵 Cash'], ['online', '📱 Online'], ['account', '📒 Pay later']], 'cash'))}</div>
+      <div class="amount-preview"><span>${t('Total')}</span><b id="amt">₹0</b></div>
+      <div class="grid">${field(t('Supplier'), picker('party_id', { kinds: ['supplier'], placeholder: t('Search supplier (optional)') }))}</div>
+      <div class="grid">${field(t('Payment'), seg('mode', [['cash', '💵 ' + t('Cash')], ['online', '📱 ' + t('Online')], ['account', '📒 ' + t('Pay later')]], 'cash'))}</div>
       <div class="grid two">
-        ${field('Date', `<input type="date" name="date" value="${today()}" required>`)}
-        ${field('Note / bill no.', '<input name="note" placeholder="Optional">')}
+        ${field(t('Date'), `<input type="date" name="date" value="${today()}" required>`)}
+        ${field(t('Note / bill no.'), `<input name="note" placeholder="${t('Optional')}">`)}
       </div>
-      <button class="btn block" type="submit">✓ Add to stock</button>
+      <button class="btn block" type="submit">✓ ${t('Add to stock')}</button>
     </form>
-    <div class="card"><h2>Recent purchases</h2><div id="list"></div></div>
+    <div class="card"><h2>${t('Recent purchases')}</h2><div id="list"></div></div>
   </div>`;
   const f = $('#f', root);
   initPickers(root);
@@ -838,10 +868,10 @@ function feedBuy(root) {
     $('#list', root).innerHTML = rows.length ? `<div class="list">${rows.map((r) => `
       <div class="item">
         <div class="avatar">🚛</div>
-        <div class="main"><b>${esc(r.item)}</b><small>${fmtDate(r.date)} · ${qty(r.qty)} ${esc(r.unit)} @ ₹${r.rate}${r.party_name ? ' · ' + esc(r.party_name) : ''}</small></div>
-        <div class="end"><b>${money(r.amount)}</b><small>${r.mode === 'account' ? 'Pay later' : MODE[r.mode]}</small></div>
-        <button class="icon-btn" data-del="/api/feed/purchases/${r.id}" aria-label="Delete">🗑</button>
-      </div>`).join('')}</div>` : '<div class="empty">No purchases in last 90 days.</div>';
+        <div class="main"><b>${esc(r.item)}</b><small>${fmtDate(r.date)} · ${qty(r.qty)} ${esc(t(r.unit))} @ ₹${r.rate}${r.party_name ? ' · ' + esc(r.party_name) : ''}</small></div>
+        <div class="end"><b>${money(r.amount)}</b><small>${r.mode === 'account' ? t('Pay later') : MODE(r.mode)}</small></div>
+        ${delBtn(`/api/feed/purchases/${r.id}`)}
+      </div>`).join('')}</div>` : empty('No purchases in last 90 days.');
   }
   wireDeletes($('#list', root), async () => { await loadItems(); list(); });
 
@@ -866,33 +896,34 @@ async function pagePeople(id) {
   let filter = sessionStorage.getItem('pf') || 'all';
   let q = '';
   main.innerHTML = `
-    <div class="page-head"><h1>People</h1><button class="btn" id="add">+ Add person</button></div>
+    <div class="page-head"><h1>${t('People')}</h1><button class="btn" id="add">+ ${t('Add person')}</button></div>
     <div class="grid two" id="sum" style="margin-bottom:16px"></div>
-    <input id="q" type="search" placeholder="🔍 Search name, code, village, phone" style="margin-bottom:12px">
+    <input id="q" type="search" placeholder="🔍 ${t('Search name, code, village, phone')}" style="margin-bottom:12px">
     <div class="chips" id="chips"></div>
     <div class="card"><div class="list" id="list"></div></div>`;
   const toPay = S.parties.filter((p) => p.balance > 0).reduce((s, p) => s + p.balance, 0);
   const toGet = S.parties.filter((p) => p.balance < 0).reduce((s, p) => s - p.balance, 0);
   $('#sum').innerHTML = `
-    <div class="stat bad"><div class="k">Dairy has to pay</div><div class="v">${money(toPay)}</div></div>
-    <div class="stat good"><div class="k">Dairy will receive</div><div class="v">${money(toGet)}</div></div>`;
+    <div class="stat bad"><div class="k">${t('Dairy has to pay')}</div><div class="v">${money(toPay)}</div></div>
+    <div class="stat good"><div class="k">${t('Dairy will receive')}</div><div class="v">${money(toGet)}</div></div>`;
   const chips = [['all', 'All'], ['farmer', 'Farmers'], ['buyer', 'Buyers'], ['company', 'Company'], ['feed', 'Feed'], ['supplier', 'Suppliers'], ['pay', 'To pay'], ['due', 'To receive'], ['inactive', 'Hidden']];
+  const kinds = KIND();
   const render = () => {
-    $('#chips').innerHTML = chips.map(([k, l]) => `<button class="chip ${k === filter ? 'on' : ''}" data-k="${k}">${l}</button>`).join('');
+    $('#chips').innerHTML = chips.map(([k, l]) => `<button class="chip ${k === filter ? 'on' : ''}" data-k="${k}">${t(l)}</button>`).join('');
     const rows = S.parties.filter((p) => {
       if (filter === 'inactive') { if (p.active) return false; } else if (!p.active) return false;
       if (filter === 'pay' && !(p.balance > 0)) return false;
       if (filter === 'due' && !(p.balance < 0)) return false;
-      if (KIND[filter] && p.kind !== filter) return false;
+      if (kinds[filter] && p.kind !== filter) return false;
       return !q || [p.name, p.code, p.village, p.phone].some((x) => x && String(x).toLowerCase().includes(q));
     });
     $('#list').innerHTML = rows.length ? rows.map((p) => {
       const b = balanceText(p.balance);
       return `<a class="item" href="#/people/${p.id}">
         <div class="avatar">${esc(p.code || initials(p.name))}</div>
-        <div class="main"><b>${esc(p.name)}</b><small>${esc(KIND_SHORT[p.kind])}${p.village ? ' · ' + esc(p.village) : ''}${p.phone ? ' · ' + esc(p.phone) : ''}</small></div>
+        <div class="main"><b>${esc(p.name)}</b><small>${esc(KIND_SHORT(p.kind))}${p.village ? ' · ' + esc(p.village) : ''}${p.phone ? ' · ' + esc(p.phone) : ''}</small></div>
         <div class="end"><span class="badge ${b.cls}">${b.short}</span></div></a>`;
-    }).join('') : '<div class="empty">Nobody here yet. Tap “+ Add person”.</div>';
+    }).join('') : empty('Nobody here yet. Tap “+ Add person”.');
   };
   $('#chips').addEventListener('click', (e) => { const b = e.target.closest('[data-k]'); if (b) { filter = b.dataset.k; sessionStorage.setItem('pf', filter); render(); } });
   $('#q').addEventListener('input', (e) => { q = e.target.value.trim().toLowerCase(); render(); });
@@ -902,26 +933,26 @@ async function pagePeople(id) {
 
 function personForm(p, done) {
   const x = p || { kind: 'farmer', active: 1, opening_balance: 0 };
-  const m = openModal(p ? 'Edit person' : 'Add person', `
+  const m = openModal(p ? t('Edit person') : t('Add person'), `
     <form id="fp" autocomplete="off">
-      <div class="grid">${field('Type', `<select name="kind">${Object.entries(KIND).map(([k, l]) => `<option value="${k}" ${k === x.kind ? 'selected' : ''}>${l}</option>`).join('')}</select>`)}</div>
+      <div class="grid">${field(t('Type'), `<select name="kind">${Object.entries(KIND()).map(([k, l]) => `<option value="${k}" ${k === x.kind ? 'selected' : ''}>${l}</option>`).join('')}</select>`)}</div>
       <div class="grid two">
-        ${field('Name', `<input name="name" value="${esc(x.name || '')}" required>`)}
-        ${field('Code / number', `<input name="code" value="${esc(x.code || '')}" placeholder="e.g. 12">`)}
-        ${field('Mobile', `<input name="phone" type="tel" inputmode="tel" value="${esc(x.phone || '')}">`)}
-        ${field('Village', `<input name="village" value="${esc(x.village || '')}">`)}
+        ${field(t('Name'), `<input name="name" value="${esc(x.name || '')}" required>`)}
+        ${field(t('Code / number'), `<input name="code" value="${esc(x.code || '')}" placeholder="${t('e.g. 12')}">`)}
+        ${field(t('Mobile'), `<input name="phone" type="tel" inputmode="tel" value="${esc(x.phone || '')}">`)}
+        ${field(t('Village'), `<input name="village" value="${esc(x.village || '')}">`)}
       </div>
-      <div class="grid">${field('Old balance (when starting the app)', seg('ob_dir', [['pay', 'Dairy has to pay'], ['get', 'They have to pay']], (x.opening_balance || 0) < 0 ? 'get' : 'pay'))}
+      <div class="grid">${field(t('Old balance (when starting the app)'), seg('ob_dir', [['pay', t('Dairy has to pay')], ['get', t('They have to pay')]], (x.opening_balance || 0) < 0 ? 'get' : 'pay'))}
         <input name="ob" type="number" step="0.01" min="0" inputmode="decimal" value="${Math.abs(x.opening_balance || 0) || ''}" placeholder="₹ 0">
       </div>
       <div class="grid two">
-        ${field(`Customer login PIN ${p && p.has_pin ? '(already set – type to change)' : '(4–6 digits)'}`, '<input name="pin" inputmode="numeric" pattern="[0-9]{4,6}" placeholder="Optional">')}
-        ${field('Status', `<select name="active"><option value="1">Active</option><option value="0" ${x.active ? '' : 'selected'}>Hidden</option></select>`)}
+        ${field(p && p.has_pin ? t('Customer login PIN (already set – type to change)') : t('Customer login PIN (4–6 digits)'), `<input name="pin" inputmode="numeric" pattern="[0-9]{4,6}" placeholder="${t('Optional')}">`)}
+        ${field(t('Status'), `<select name="active"><option value="1">${t('Active')}</option><option value="0" ${x.active ? '' : 'selected'}>${t('Hidden')}</option></select>`)}
       </div>
-      <div class="grid">${field('Note', `<input name="note" value="${esc(x.note || '')}">`)}</div>
-      <p class="sub">With mobile + PIN the person can log in and see their own record.</p>
-      <button class="btn block" type="submit">Save</button>
-      ${p && p.has_pin ? '<br><br><button type="button" class="btn plain block" id="rmpin">Remove login PIN</button>' : ''}
+      <div class="grid">${field(t('Note'), `<input name="note" value="${esc(x.note || '')}">`)}</div>
+      <p class="sub">${t('With mobile + PIN the person can log in and see their own record.')}</p>
+      <button class="btn block" type="submit">${t('Save')}</button>
+      ${p && p.has_pin ? `<br><br><button type="button" class="btn plain block" id="rmpin">${t('Remove login PIN')}</button>` : ''}
     </form>`);
   const save = async (d, extra = {}) => {
     const ob = Number(d.ob) || 0;
@@ -934,6 +965,22 @@ function personForm(p, done) {
   onSubmit($('#fp', m), (d) => save(d));
   const rm = $('#rmpin', m);
   if (rm) rm.onclick = () => save(formData($('#fp', m)), { remove_pin: true, pin: '' }).catch((e) => toast(e.message, true));
+}
+
+// Ledger lines are built here (not on the server) so they can be translated.
+function ledgerDesc(r) {
+  const L = t('L');
+  const mode = r.mode ? ` · ${MODE(r.mode)}` : '';
+  const note = r.note ? ` – ${r.note}` : '';
+  switch (r.kind) {
+    case 'milk_in': return `${t('Milk given')} – ${TYPE(r.milk_type)}, ${SHIFT(r.shift)} (${qty(r.qty)} ${L}${r.fat ? `, ${t('fat')} ${r.fat}` : ''} @ ₹${r.rate})`;
+    case 'milk_out': return `${t('Milk taken')} – ${TYPE(r.milk_type)} (${qty(r.qty)} ${L} @ ₹${r.rate})${mode}`;
+    case 'feed': return `${t('Feed')} – ${r.item} (${qty(r.qty)} ${t(r.unit)} @ ₹${r.rate})${mode}`;
+    case 'feed_supply': return `${t('Feed supplied')} – ${r.item} (${qty(r.qty)} ${t(r.unit)} @ ₹${r.rate})${mode}`;
+    case 'pay_out': return `${t('Paid by dairy')} (${MODE(r.mode)})${note}`;
+    case 'pay_in': return `${t('Received by dairy')} (${MODE(r.mode)})${note}`;
+    default: return r.desc;
+  }
 }
 
 async function pagePerson(id, from, to) {
@@ -949,35 +996,35 @@ async function pagePerson(id, from, to) {
   const paidIn = l.entries.filter((e) => e.kind === 'pay_in').reduce((s, e) => s + e.credit, 0);
 
   main.innerHTML = `
-    <div class="page-head no-print"><a href="#/people" class="btn sm plain">← People</a>
+    <div class="page-head no-print"><a href="#/people" class="btn sm plain">← ${t('People')}</a>
       <div class="row-actions">
-        <button class="btn sm ghost" id="edit">✏️ Edit</button>
-        <button class="btn sm ghost" id="print">🖨 Print</button>
-        ${p.phone ? '<button class="btn sm ghost" id="wa">💬 WhatsApp</button>' : ''}
+        <button class="btn sm ghost" id="edit">✏️ ${t('Edit')}</button>
+        <button class="btn sm ghost" id="print">🖨 ${t('Print')}</button>
+        ${p.phone ? `<button class="btn sm ghost" id="wa">💬 WhatsApp</button>` : ''}
       </div></div>
-    <div class="print-only"><h1>${esc(S.status.dairy_name)}</h1><p>Statement ${fmtDate(from, true)} – ${fmtDate(to, true)}</p></div>
+    <div class="print-only"><h1>${esc(S.status.dairy_name)}</h1><p>${t('Statement')} ${fmtDate(from, true)} – ${fmtDate(to, true)}</p></div>
     <div class="balance-card ${p.balance < 0 ? 'owe' : Math.abs(p.balance) < 0.005 ? 'zero' : ''}">
-      <div class="lbl">${esc(p.code ? p.code + ' · ' : '')}${esc(p.name)} · ${esc(KIND_SHORT[p.kind])}</div>
+      <div class="lbl">${esc(p.code ? p.code + ' · ' : '')}${esc(p.name)} · ${esc(KIND_SHORT(p.kind))}</div>
       <div class="amt">${money(Math.abs(p.balance))}</div>
       <div class="lbl">${b.text}</div>
-      <div class="meta">${p.village ? esc(p.village) + ' · ' : ''}${p.phone ? `<a href="tel:${esc(p.phone)}">📞 ${esc(p.phone)}</a>` : 'No mobile'} · ${p.has_pin ? '🔓 Can log in' : '🔒 No login PIN'}</div>
+      <div class="meta">${p.village ? esc(p.village) + ' · ' : ''}${p.phone ? `<a href="tel:${esc(p.phone)}">📞 ${esc(p.phone)}</a>` : t('No mobile')} · ${p.has_pin ? '🔓 ' + t('Can log in') : '🔒 ' + t('No login PIN')}</div>
     </div>
     <div class="row-actions no-print" style="margin-bottom:16px">
-      <button class="btn" id="pay">💸 Dairy pays ${p.balance > 0 ? money(p.balance) : ''}</button>
-      <button class="btn ghost" id="recv">📥 Receive money</button>
+      <button class="btn" id="pay">💸 ${t('Dairy pays')} ${p.balance > 0 ? money(p.balance) : ''}</button>
+      <button class="btn ghost" id="recv">📥 ${t('Receive money')}</button>
     </div>
     ${rangeBar(from, to)}
     <div class="grid four" style="margin-bottom:16px">
-      <div class="stat"><div class="k">Milk given</div><div class="v">${qty(l.milk_qty)} L</div><div class="s">${money(l.milk_amount)}</div></div>
-      <div class="stat"><div class="k">Feed taken (khata)</div><div class="v">${money(l.feed_amount)}</div></div>
-      <div class="stat"><div class="k">Paid by dairy</div><div class="v">${money(paidOut)}</div></div>
-      <div class="stat"><div class="k">Received by dairy</div><div class="v">${money(paidIn)}</div></div>
+      <div class="stat"><div class="k">${t('Milk given')}</div><div class="v">${qty(l.milk_qty)} ${t('L')}</div><div class="s">${money(l.milk_amount)}</div></div>
+      <div class="stat"><div class="k">${t('Feed taken (khata)')}</div><div class="v">${money(l.feed_amount)}</div></div>
+      <div class="stat"><div class="k">${t('Paid by dairy')}</div><div class="v">${money(paidOut)}</div></div>
+      <div class="stat"><div class="k">${t('Received by dairy')}</div><div class="v">${money(paidIn)}</div></div>
     </div>
     <div class="card">
-      <h2>Record ${fmtDate(from)} – ${fmtDate(to)}</h2>
+      <h2>${t('Record')} ${fmtDate(from)} – ${fmtDate(to)}</h2>
       ${ledgerTable(l)}
     </div>`;
-  wireRange(main, (f, t) => { sessionStorage.setItem('lf', f); sessionStorage.setItem('lt', t); pagePerson(id, f, t); });
+  wireRange(main, (f, tt) => { sessionStorage.setItem('lf', f); sessionStorage.setItem('lt', tt); pagePerson(id, f, tt); });
   $('#edit').onclick = () => personForm(partyById(id), () => pagePerson(id, from, to));
   $('#print').onclick = () => window.print();
   $('#pay').onclick = () => paymentForm(p, 'out', () => pagePerson(id, from, to));
@@ -986,13 +1033,13 @@ async function pagePerson(id, from, to) {
   if (wa) wa.onclick = () => {
     const lines = [
       `*${S.status.dairy_name}*`,
-      `Statement for ${p.name} (${fmtDate(from)} – ${fmtDate(to)})`,
-      `Milk: ${qty(l.milk_qty)} L = ${money(l.milk_amount)}`,
-      `Feed: ${money(l.feed_amount)}`,
-      `Paid by dairy: ${money(paidOut)}`,
-      `Received: ${money(paidIn)}`,
-      `*Balance: ${b.text}*`,
-      p.has_pin ? `See full details: ${location.origin}/` : '',
+      `${t('Statement for {name}', { name: p.name })} (${fmtDate(from)} – ${fmtDate(to)})`,
+      `${t('Milk')}: ${qty(l.milk_qty)} ${t('L')} = ${money(l.milk_amount)}`,
+      `${t('Feed')}: ${money(l.feed_amount)}`,
+      `${t('Paid by dairy')}: ${money(paidOut)}`,
+      `${t('Received by dairy')}: ${money(paidIn)}`,
+      `*${t('Balance')}: ${b.text}*`,
+      p.has_pin ? `${t('See full details:')} ${location.origin}/` : '',
     ].filter(Boolean);
     let phone = p.phone.replace(/\D/g, '');
     if (phone.length === 10) phone = '91' + phone;
@@ -1003,35 +1050,35 @@ async function pagePerson(id, from, to) {
 function ledgerTable(l) {
   const rows = l.entries;
   return `<div class="list ledger-list">
-    <div class="item"><div class="main"><b>Opening balance</b><small>${l.from ? fmtDate(l.from) : ''}</small></div><div class="end"><b>${money(l.opening)}</b></div></div>
-    ${rows.map((r) => `<div class="item"><div class="main"><small>${fmtDate(r.date)}</small><div>${esc(r.desc)}</div></div>
-      <div class="end">${r.credit ? `<b class="good-t">+${money(r.credit)}</b>` : ''}${r.debit ? `<b class="bad-t">−${money(r.debit)}</b>` : ''}<small>Bal ${money(r.balance)}</small></div></div>`).join('')}
-    <div class="item"><div class="main"><b>Closing balance</b></div><div class="end"><b>${money(l.closing)}</b></div></div>
+    <div class="item"><div class="main"><b>${t('Opening balance')}</b><small>${l.from ? fmtDate(l.from) : ''}</small></div><div class="end"><b>${money(l.opening)}</b></div></div>
+    ${rows.map((r) => `<div class="item"><div class="main"><small>${fmtDate(r.date)}</small><div>${esc(ledgerDesc(r))}</div></div>
+      <div class="end">${r.credit ? `<b class="good-t">+${money(r.credit)}</b>` : ''}${r.debit ? `<b class="bad-t">−${money(r.debit)}</b>` : ''}<small>${t('Bal')} ${money(r.balance)}</small></div></div>`).join('')}
+    <div class="item"><div class="main"><b>${t('Closing balance')}</b></div><div class="end"><b>${money(l.closing)}</b></div></div>
   </div>
   <div class="table-wrap ledger-table"><table>
-    <thead><tr><th>Date</th><th>Details</th><th class="n">+ Credit</th><th class="n">− Debit</th><th class="n">Balance</th></tr></thead>
+    <thead><tr><th>${t('Date')}</th><th>${t('Details')}</th><th class="n">+ ${t('Credit')}</th><th class="n">− ${t('Debit')}</th><th class="n">${t('Balance')}</th></tr></thead>
     <tbody>
-      <tr class="opening"><td>${l.from ? fmtDate(l.from) : ''}</td><td>Opening balance</td><td></td><td></td><td class="n">${money(l.opening)}</td></tr>
-      ${rows.map((r) => `<tr><td>${fmtDate(r.date)}</td><td>${esc(r.desc)}</td>
+      <tr class="opening"><td>${l.from ? fmtDate(l.from) : ''}</td><td>${t('Opening balance')}</td><td></td><td></td><td class="n">${money(l.opening)}</td></tr>
+      ${rows.map((r) => `<tr><td>${fmtDate(r.date)}</td><td>${esc(ledgerDesc(r))}</td>
         <td class="n">${r.credit ? money(r.credit) : ''}</td><td class="n">${r.debit ? money(r.debit) : ''}</td>
         <td class="n ${r.balance < 0 ? 'bad-t' : ''}">${money(r.balance)}</td></tr>`).join('')}
     </tbody>
-    <tfoot><tr><td></td><td>Total</td><td class="n">${money(l.total_credit)}</td><td class="n">${money(l.total_debit)}</td><td class="n">${money(l.closing)}</td></tr></tfoot>
+    <tfoot><tr><td></td><td>${t('Total')}</td><td class="n">${money(l.total_credit)}</td><td class="n">${money(l.total_debit)}</td><td class="n">${money(l.closing)}</td></tr></tfoot>
   </table></div>
-  <p class="sub">Balance in plus (+) = dairy has to pay. In minus (−) = person has to pay dairy.</p>`;
+  <p class="sub">${t('Balance in plus (+) = dairy has to pay. In minus (−) = person has to pay dairy.')}</p>`;
 }
 
 function paymentForm(p, direction, done) {
   const suggested = direction === 'out' ? Math.max(0, p.balance) : Math.max(0, -p.balance);
-  const m = openModal(direction === 'out' ? `Pay ${p.name}` : `Receive from ${p.name}`, `
+  const m = openModal(direction === 'out' ? t('Pay {name}', { name: p.name }) : t('Receive from {name}', { name: p.name }), `
     <form id="fpay">
-      <div class="grid">${field('Amount ₹', `<input name="amount" class="big" type="number" step="0.01" min="0" inputmode="decimal" value="${suggested ? r2(suggested) : ''}" required>`)}</div>
-      <div class="grid">${field('Mode', seg('mode', [['cash', '💵 Cash'], ['online', '📱 Online / UPI']], 'cash'))}</div>
+      <div class="grid">${field(t('Amount ₹'), `<input name="amount" class="big" type="number" step="0.01" min="0" inputmode="decimal" value="${suggested ? r2(suggested) : ''}" required>`)}</div>
+      <div class="grid">${field(t('Mode'), cashOnlineSeg())}</div>
       <div class="grid two">
-        ${field('Date', `<input type="date" name="date" value="${today()}" required>`)}
-        ${field('Note', '<input name="note" placeholder="e.g. 1–10 Oct milk bill">')}
+        ${field(t('Date'), `<input type="date" name="date" value="${today()}" required>`)}
+        ${field(t('Note'), `<input name="note" placeholder="${t('e.g. 1–10 Oct milk bill')}">`)}
       </div>
-      <button class="btn block" type="submit">✓ Save</button>
+      <button class="btn block" type="submit">✓ ${t('Save')}</button>
     </form>`);
   onSubmit($('#fpay', m), async (d) => {
     await api('POST', '/api/payments', { ...d, party_id: p.id, direction });
@@ -1045,27 +1092,27 @@ async function pageMoney() {
   const main = shell('money', 'Payments');
   await loadParties();
   main.innerHTML = `
-    <div class="page-head"><h1>Payments</h1></div>
+    <div class="page-head"><h1>${t('Payments')}</h1></div>
     <div class="grid two" id="pos" style="margin-bottom:16px"></div>
     <div class="cols">
       <form class="card" id="f" autocomplete="off">
-        <h2>Pay or receive money</h2>
-        <div class="grid">${seg('direction', [['out', '💸 Dairy pays'], ['in', '📥 Dairy receives']], 'out')}</div>
-        <div class="grid">${field('Person', picker('party_id', { kinds: ['farmer'] }))}</div>
-        <div class="grid">${field('Amount ₹', '<input name="amount" class="big" type="number" step="0.01" min="0" inputmode="decimal" required>')}</div>
-        <div class="grid">${field('Mode', seg('mode', [['cash', '💵 Cash'], ['online', '📱 Online / UPI']], 'cash'))}</div>
+        <h2>${t('Pay or receive money')}</h2>
+        <div class="grid">${seg('direction', [['out', '💸 ' + t('Dairy pays')], ['in', '📥 ' + t('Dairy receives')]], 'out')}</div>
+        <div class="grid">${field(t('Person'), picker('party_id', { kinds: ['farmer'] }))}</div>
+        <div class="grid">${field(t('Amount ₹'), '<input name="amount" class="big" type="number" step="0.01" min="0" inputmode="decimal" required>')}</div>
+        <div class="grid">${field(t('Mode'), cashOnlineSeg())}</div>
         <div class="grid two">
-          ${field('Date', `<input type="date" name="date" value="${today()}" required>`)}
-          ${field('Note', '<input name="note" placeholder="Optional">')}
+          ${field(t('Date'), `<input type="date" name="date" value="${today()}" required>`)}
+          ${field(t('Note'), `<input name="note" placeholder="${t('Optional')}">`)}
         </div>
-        <button class="btn block" type="submit">✓ Save payment</button>
+        <button class="btn block" type="submit">✓ ${t('Save payment')}</button>
       </form>
       <div>
-        <div class="card"><h2>Pending: dairy has to pay</h2><div id="topay"></div></div>
-        <div class="card"><h2>Pending: to receive</h2><div id="toget"></div></div>
+        <div class="card"><h2>${t('Pending: dairy has to pay')}</h2><div id="topay"></div></div>
+        <div class="card"><h2>${t('Pending: to receive')}</h2><div id="toget"></div></div>
       </div>
     </div>
-    <div class="card"><h2>Recent payments</h2><div id="list"></div></div>`;
+    <div class="card"><h2>${t('Recent payments')}</h2><div id="list"></div></div>`;
   const f = $('#f');
   initPickers(main);
   const pick = $('.picker', f);
@@ -1081,25 +1128,25 @@ async function pageMoney() {
 
   const pendList = (rows, dir) => rows.length ? `<div class="list">${rows.slice(0, 8).map((p) => `
       <div class="item"><div class="avatar">${esc(p.code || initials(p.name))}</div>
-        <div class="main"><b>${esc(p.name)}</b><small>${esc(KIND_SHORT[p.kind])}${p.village ? ' · ' + esc(p.village) : ''}</small></div>
+        <div class="main"><b>${esc(p.name)}</b><small>${esc(KIND_SHORT(p.kind))}${p.village ? ' · ' + esc(p.village) : ''}</small></div>
         <div class="end"><b>${money(Math.abs(p.balance))}</b></div>
-        <button class="btn sm ghost" data-quick="${p.id}" data-dir="${dir}">${dir === 'out' ? 'Pay' : 'Receive'}</button></div>`).join('')}</div>`
-    : '<div class="empty">Nothing pending 🎉</div>';
+        <button class="btn sm ghost" data-quick="${p.id}" data-dir="${dir}">${dir === 'out' ? t('Pay') : t('Receive')}</button></div>`).join('')}</div>`
+    : empty('Nothing pending 🎉');
 
   async function refresh() {
     await loadParties();
     const [dash, rows] = await Promise.all([api('GET', `/api/dashboard?today=${today()}`), api('GET', `/api/payments?from=${addDays(today(), -60)}`)]);
     $('#pos').innerHTML = `
-      <div class="stat"><div class="k">💵 Cash in hand</div><div class="v">${money(dash.money.cash)}</div></div>
-      <div class="stat"><div class="k">📱 Online / Bank</div><div class="v">${money(dash.money.online)}</div></div>`;
+      <div class="stat"><div class="k">💵 ${t('Cash in hand')}</div><div class="v">${money(dash.money.cash)}</div></div>
+      <div class="stat"><div class="k">📱 ${t('Online / Bank')}</div><div class="v">${money(dash.money.online)}</div></div>`;
     $('#topay').innerHTML = pendList(S.parties.filter((p) => p.balance > 0.005).sort((a, b) => b.balance - a.balance), 'out');
     $('#toget').innerHTML = pendList(S.parties.filter((p) => p.balance < -0.005).sort((a, b) => a.balance - b.balance), 'in');
     $('#list').innerHTML = rows.length ? `<div class="list">${rows.map((r) => `
       <div class="item"><div class="avatar">${r.direction === 'out' ? '💸' : '📥'}</div>
-        <div class="main"><b>${esc(r.party_name)}</b><small>${fmtDate(r.date)} · ${r.direction === 'out' ? 'Paid by dairy' : 'Received'} · ${MODE[r.mode]}${r.note ? ' · ' + esc(r.note) : ''}</small></div>
+        <div class="main"><b>${esc(r.party_name)}</b><small>${fmtDate(r.date)} · ${r.direction === 'out' ? t('Paid by dairy') : t('Received')} · ${MODE(r.mode)}${r.note ? ' · ' + esc(r.note) : ''}</small></div>
         <div class="end"><b class="${r.direction === 'out' ? 'bad-t' : 'good-t'}">${r.direction === 'out' ? '−' : '+'}${money(r.amount)}</b></div>
-        <button class="icon-btn" data-del="/api/payments/${r.id}" aria-label="Delete">🗑</button></div>`).join('')}</div>`
-      : '<div class="empty">No payments in last 60 days.</div>';
+        ${delBtn(`/api/payments/${r.id}`)}</div>`).join('')}</div>`
+      : empty('No payments in last 60 days.');
   }
   main.addEventListener('click', (e) => {
     const b = e.target.closest('[data-quick]');
@@ -1117,6 +1164,7 @@ async function pageMoney() {
 
 // ================= expenses =================
 
+// Categories are saved in English and shown in the chosen language.
 const EXP_CATS = {
   house: ['Ration / Grocery', 'Vegetables & Milk', 'Electricity', 'Gas', 'School / Fees', 'Medical', 'Clothes', 'Mobile / Internet', 'Travel / Petrol', 'Function / Gifts', 'Loan EMI', 'Other'],
   business: ['Electricity (dairy)', 'Diesel / Generator', 'Labour / Salary', 'Transport', 'Cans & Equipment', 'Repair', 'Rent', 'Testing / Chemicals', 'Other'],
@@ -1128,49 +1176,51 @@ async function pageExpenses() {
   const from = monthStart();
   const to = today();
   main.innerHTML = `
-    <div class="page-head"><h1>Expenses</h1></div>
+    <div class="page-head"><h1>${t('Expenses')}</h1></div>
     <div class="cols">
       <form class="card" id="f" autocomplete="off">
-        <h2>Add expense</h2>
-        <div class="grid">${seg('kind', [['house', '🏠 House'], ['business', '🏪 Dairy business']], kind)}</div>
-        <div class="grid"><div class="f"><span class="sub"><b>Spent on</b></span><div class="chips" id="cats" style="margin:4px 0 0"></div>
-          <input name="category" id="cat" placeholder="Or type here" required></div></div>
-        <div class="grid">${field('Amount ₹', '<input name="amount" class="big" type="number" step="0.01" min="0" inputmode="decimal" required>')}</div>
-        <div class="grid">${field('Paid by', seg('mode', [['cash', '💵 Cash'], ['online', '📱 Online / UPI']], 'cash'))}</div>
+        <h2>${t('Add expense')}</h2>
+        <div class="grid">${seg('kind', [['house', '🏠 ' + t('House')], ['business', '🏪 ' + t('Dairy business')]], kind)}</div>
+        <div class="grid"><div class="f"><span class="sub"><b>${t('Spent on')}</b></span><div class="chips" id="cats" style="margin:4px 0 0"></div>
+          <input name="category" id="cat" placeholder="${t('Or type here')}" required></div></div>
+        <div class="grid">${field(t('Amount ₹'), '<input name="amount" class="big" type="number" step="0.01" min="0" inputmode="decimal" required>')}</div>
+        <div class="grid">${field(t('Paid by'), cashOnlineSeg())}</div>
         <div class="grid two">
-          ${field('Date', `<input type="date" name="date" value="${today()}" required>`)}
-          ${field('Note', '<input name="note" placeholder="Optional">')}
+          ${field(t('Date'), `<input type="date" name="date" value="${today()}" required>`)}
+          ${field(t('Note'), `<input name="note" placeholder="${t('Optional')}">`)}
         </div>
-        <button class="btn block" type="submit">✓ Save expense</button>
+        <button class="btn block" type="submit">✓ ${t('Save expense')}</button>
       </form>
       <div>
         <div class="grid two" id="sum" style="margin-bottom:16px"></div>
-        <div class="card"><h2>This month</h2><div id="list"></div></div>
+        <div class="card"><h2>${t('This month')}</h2><div id="list"></div></div>
       </div>
     </div>`;
   const f = $('#f');
   const cats = () => {
-    $('#cats').innerHTML = EXP_CATS[kind].map((c) => `<button type="button" class="chip ${f.category.value === c ? 'on' : ''}" data-c="${esc(c)}">${esc(c)}</button>`).join('');
+    $('#cats').innerHTML = EXP_CATS[kind].map((c) => `<button type="button" class="chip ${f.category.value === t(c) ? 'on' : ''}" data-c="${esc(c)}">${t(c)}</button>`).join('');
   };
-  $('#cats').addEventListener('click', (e) => { const b = e.target.closest('[data-c]'); if (b) { f.category.value = b.dataset.c; cats(); f.amount.focus(); } });
+  $('#cats').addEventListener('click', (e) => { const b = e.target.closest('[data-c]'); if (b) { f.category.value = t(b.dataset.c); cats(); f.amount.focus(); } });
   f.category.addEventListener('input', cats);
   $$('input[name=kind]', f).forEach((r) => r.addEventListener('change', () => { kind = r.value; sessionStorage.setItem('ek', kind); f.category.value = ''; cats(); }));
 
   async function list() {
     const rows = await api('GET', `/api/expenses?from=${from}&to=${to}`);
     const tot = (k, m) => rows.filter((r) => r.kind === k && (!m || r.mode === m)).reduce((s, r) => s + r.amount, 0);
-    $('#sum').innerHTML = `
-      <div class="stat"><div class="k">🏠 House (this month)</div><div class="v">${money(tot('house'))}</div><div class="s">Cash ${money(tot('house', 'cash'))} · Online ${money(tot('house', 'online'))}</div></div>
-      <div class="stat"><div class="k">🏪 Business (this month)</div><div class="v">${money(tot('business'))}</div><div class="s">Cash ${money(tot('business', 'cash'))} · Online ${money(tot('business', 'online'))}</div></div>`;
+    const box = (k, icon, label) => `<div class="stat"><div class="k">${icon} ${t(label)}</div><div class="v">${money(tot(k))}</div><div class="s">${t('Cash')} ${money(tot(k, 'cash'))} · ${t('Online')} ${money(tot(k, 'online'))}</div></div>`;
+    $('#sum').innerHTML = box('house', '🏠', 'House (this month)') + box('business', '🏪', 'Business (this month)');
     $('#list').innerHTML = rows.length ? `<div class="list">${rows.map((r) => `
       <div class="item"><div class="avatar">${r.kind === 'house' ? '🏠' : '🏪'}</div>
-        <div class="main"><b>${esc(r.category)}</b><small>${fmtDate(r.date)} · ${MODE[r.mode]}${r.note ? ' · ' + esc(r.note) : ''}</small></div>
+        <div class="main"><b>${esc(t(r.category))}</b><small>${fmtDate(r.date)} · ${MODE(r.mode)}${r.note ? ' · ' + esc(r.note) : ''}</small></div>
         <div class="end"><b>${money(r.amount)}</b></div>
-        <button class="icon-btn" data-del="/api/expenses/${r.id}" aria-label="Delete">🗑</button></div>`).join('')}</div>`
-      : '<div class="empty">No expenses this month.</div>';
+        ${delBtn(`/api/expenses/${r.id}`)}</div>`).join('')}</div>`
+      : empty('No expenses this month.');
   }
   wireDeletes($('#list'), list);
   onSubmit(f, async (d) => {
+    // Save the English name of a chosen category so it shows in either language.
+    const match = Object.values(EXP_CATS).flat().find((c) => t(c) === d.category);
+    if (match) d.category = match;
     await api('POST', '/api/expenses', d);
     toast('Expense saved');
     f.amount.value = ''; f.note.value = ''; f.category.value = ''; cats();
@@ -1187,77 +1237,78 @@ async function pageReports(from, to) {
   from = from || sessionStorage.getItem('rf') || monthStart();
   to = to || sessionStorage.getItem('rt') || today();
   const r = await api('GET', `/api/reports?from=${from}&to=${to}`);
-  const byT = (arr, t) => arr.find((x) => x.milk_type === t) || { qty: 0, amount: 0 };
+  const byT = (arr, ty) => arr.find((x) => x.milk_type === ty) || { qty: 0, amount: 0 };
   const maxCat = Math.max(1, ...r.expense_categories.map((c) => c.amount));
   const fl = r.flows;
+  const L = t('L');
   main.innerHTML = `
-    <div class="page-head"><h1>Reports</h1><button class="btn sm ghost no-print" id="print">🖨 Print</button></div>
+    <div class="page-head"><h1>${t('Reports')}</h1><button class="btn sm ghost no-print" id="print">🖨 ${t('Print')}</button></div>
     <div class="print-only"><h2>${esc(S.status.dairy_name)} · ${fmtDate(from, true)} – ${fmtDate(to, true)}</h2></div>
     ${rangeBar(from, to)}
     <div class="grid four" style="margin-bottom:16px">
-      <div class="stat ${r.profit >= 0 ? 'good' : 'bad'}"><div class="k">Business profit</div><div class="v">${money(r.profit)}</div></div>
-      <div class="stat"><div class="k">House expenses</div><div class="v">${money(r.house_expenses)}</div></div>
-      <div class="stat ${r.savings >= 0 ? 'good' : 'bad'}"><div class="k">Saved (profit − house)</div><div class="v">${money(r.savings)}</div></div>
-      <div class="stat"><div class="k">Milk wasted / home</div><div class="v">${qty(r.milk_wastage)} L</div></div>
+      <div class="stat ${r.profit >= 0 ? 'good' : 'bad'}"><div class="k">${t('Business profit')}</div><div class="v">${money(r.profit)}</div></div>
+      <div class="stat"><div class="k">${t('House expenses')}</div><div class="v">${money(r.house_expenses)}</div></div>
+      <div class="stat ${r.savings >= 0 ? 'good' : 'bad'}"><div class="k">${t('Saved (profit − house)')}</div><div class="v">${money(r.savings)}</div></div>
+      <div class="stat"><div class="k">${t('Milk wasted / home')}</div><div class="v">${qty(r.milk_wastage)} ${L}</div></div>
     </div>
     <div class="cols">
       <div class="card">
-        <h2>Profit & loss</h2>
+        <h2>${t('Profit & loss')}</h2>
         <div class="kv">
-          <div>Milk sold (${qty(r.milk_sold.qty)} L)</div><div>${money(r.milk_sold.amount)}</div>
-          <div>Milk bought (${qty(r.milk_bought.qty)} L)</div><div>− ${money(r.milk_bought.amount)}</div>
-          <div class="total">Milk profit</div><div class="total">${money(r.milk_margin)}</div>
-          <div>Feed sold</div><div>${money(r.feed_sales)}</div>
-          <div>Cost of that feed</div><div>− ${money(r.feed_cost)}</div>
-          <div class="total">Feed profit</div><div class="total">${money(r.feed_margin)}</div>
-          <div>Business expenses</div><div>− ${money(r.business_expenses)}</div>
-          <div class="total">Business profit</div><div class="total ${r.profit >= 0 ? 'good-t' : 'bad-t'}">${money(r.profit)}</div>
-          <div>House expenses</div><div>− ${money(r.house_expenses)}</div>
-          <div class="total">Saved</div><div class="total ${r.savings >= 0 ? 'good-t' : 'bad-t'}">${money(r.savings)}</div>
+          <div>${t('Milk sold')} (${qty(r.milk_sold.qty)} ${L})</div><div>${money(r.milk_sold.amount)}</div>
+          <div>${t('Milk bought')} (${qty(r.milk_bought.qty)} ${L})</div><div>− ${money(r.milk_bought.amount)}</div>
+          <div class="total">${t('Milk profit')}</div><div class="total">${money(r.milk_margin)}</div>
+          <div>${t('Feed sold')}</div><div>${money(r.feed_sales)}</div>
+          <div>${t('Cost of that feed')}</div><div>− ${money(r.feed_cost)}</div>
+          <div class="total">${t('Feed profit')}</div><div class="total">${money(r.feed_margin)}</div>
+          <div>${t('Business expenses')}</div><div>− ${money(r.business_expenses)}</div>
+          <div class="total">${t('Business profit')}</div><div class="total ${r.profit >= 0 ? 'good-t' : 'bad-t'}">${money(r.profit)}</div>
+          <div>${t('House expenses')}</div><div>− ${money(r.house_expenses)}</div>
+          <div class="total">${t('Saved')}</div><div class="total ${r.savings >= 0 ? 'good-t' : 'bad-t'}">${money(r.savings)}</div>
         </div>
-        <p class="sub">Feed bought for stock in this period: ${money(r.feed_bought)} (counted as profit only when sold).</p>
+        <p class="sub">${t('Feed bought for stock in this period: {amt} (counted as profit only when sold).', { amt: money(r.feed_bought) })}</p>
       </div>
       <div class="card">
-        <h2>Milk by type</h2>
+        <h2>${t('Milk by type')}</h2>
         <div class="table-wrap"><table>
-          <thead><tr><th></th><th class="n">Bought L</th><th class="n">Bought ₹</th><th class="n">Sold L</th><th class="n">Sold ₹</th></tr></thead>
-          <tbody>${['cow', 'buffalo'].map((t) => `<tr><td><span class="badge ${t}">${t}</span></td>
-            <td class="n">${qty(byT(r.milk_bought_by_type, t).qty)}</td><td class="n">${money(byT(r.milk_bought_by_type, t).amount)}</td>
-            <td class="n">${qty(byT(r.milk_sold_by_type, t).qty)}</td><td class="n">${money(byT(r.milk_sold_by_type, t).amount)}</td></tr>`).join('')}</tbody>
+          <thead><tr><th></th><th class="n">${t('Bought')} ${L}</th><th class="n">${t('Bought')} ₹</th><th class="n">${t('Sold')} ${L}</th><th class="n">${t('Sold')} ₹</th></tr></thead>
+          <tbody>${['cow', 'buffalo'].map((ty) => `<tr><td>${typeBadge(ty)}</td>
+            <td class="n">${qty(byT(r.milk_bought_by_type, ty).qty)}</td><td class="n">${money(byT(r.milk_bought_by_type, ty).amount)}</td>
+            <td class="n">${qty(byT(r.milk_sold_by_type, ty).qty)}</td><td class="n">${money(byT(r.milk_sold_by_type, ty).amount)}</td></tr>`).join('')}</tbody>
         </table></div>
-        <p class="sub">Now in cold storage: cow ${qty(r.stock.cow)} L · buffalo ${qty(r.stock.buffalo)} L</p>
+        <p class="sub">${t('Now in cold storage:')} ${t('Cow')} ${qty(r.stock.cow)} ${L} · ${t('Buffalo')} ${qty(r.stock.buffalo)} ${L}</p>
       </div>
     </div>
     <div class="cols">
       <div class="card">
-        <h2>Cash vs Online in this period</h2>
+        <h2>${t('Cash vs Online in this period')}</h2>
         <div class="table-wrap"><table>
-          <thead><tr><th></th><th class="n">💵 Cash</th><th class="n">📱 Online</th></tr></thead>
+          <thead><tr><th></th><th class="n">💵 ${t('Cash')}</th><th class="n">📱 ${t('Online')}</th></tr></thead>
           <tbody>
-            ${[['Milk sales', 'milk_sales'], ['Feed sales', 'feed_sales'], ['Received from people', 'received']].map(([l, k]) => `<tr><td>+ ${l}</td><td class="n">${money(fl.cash[k])}</td><td class="n">${money(fl.online[k])}</td></tr>`).join('')}
-            ${[['Paid to people', 'paid'], ['Feed stock bought', 'feed_purchases'], ['Business expenses', 'business_exp'], ['House expenses', 'house_exp']].map(([l, k]) => `<tr><td>− ${l}</td><td class="n">${money(fl.cash[k])}</td><td class="n">${money(fl.online[k])}</td></tr>`).join('')}
+            ${[['Milk sales', 'milk_sales'], ['Feed sales', 'feed_sales'], ['Received from people', 'received']].map(([lb, k]) => `<tr><td>+ ${t(lb)}</td><td class="n">${money(fl.cash[k])}</td><td class="n">${money(fl.online[k])}</td></tr>`).join('')}
+            ${[['Paid to people', 'paid'], ['Feed stock bought', 'feed_purchases'], ['Business expenses', 'business_exp'], ['House expenses', 'house_exp']].map(([lb, k]) => `<tr><td>− ${t(lb)}</td><td class="n">${money(fl.cash[k])}</td><td class="n">${money(fl.online[k])}</td></tr>`).join('')}
           </tbody>
           <tfoot>
-            <tr><td>Net change</td><td class="n">${money(fl.cash.total_in - fl.cash.total_out)}</td><td class="n">${money(fl.online.total_in - fl.online.total_out)}</td></tr>
-            <tr><td>Balance today</td><td class="n">${money(r.money_now.cash)}</td><td class="n">${money(r.money_now.online)}</td></tr>
+            <tr><td>${t('Net change')}</td><td class="n">${money(fl.cash.total_in - fl.cash.total_out)}</td><td class="n">${money(fl.online.total_in - fl.online.total_out)}</td></tr>
+            <tr><td>${t('Balance today')}</td><td class="n">${money(r.money_now.cash)}</td><td class="n">${money(r.money_now.online)}</td></tr>
           </tfoot>
         </table></div>
       </div>
       <div class="card">
-        <h2>Where the money went</h2>
+        <h2>${t('Where the money went')}</h2>
         ${r.expense_categories.length ? r.expense_categories.map((c) => `
-          <div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:.92rem"><span>${c.kind === 'house' ? '🏠' : '🏪'} ${esc(c.category)}</span><b>${money(c.amount)}</b></div>
-          <div class="hbar ${c.kind}" style="width:${(c.amount / maxCat) * 100}%"></div></div>`).join('') : '<div class="empty">No expenses in this period.</div>'}
+          <div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:.92rem"><span>${c.kind === 'house' ? '🏠' : '🏪'} ${esc(t(c.category))}</span><b>${money(c.amount)}</b></div>
+          <div class="hbar ${c.kind}" style="width:${(c.amount / maxCat) * 100}%"></div></div>`).join('') : empty('No expenses in this period.')}
       </div>
     </div>
     <div class="card">
-      <h2>Day by day milk</h2>
+      <h2>${t('Day by day milk')}</h2>
       ${r.daily.length ? `<div class="table-wrap"><table>
-        <thead><tr><th>Date</th><th class="n">In (L)</th><th class="n">Out (L)</th><th class="n">Bought ₹</th><th class="n">Sold ₹</th></tr></thead>
+        <thead><tr><th>${t('Date')}</th><th class="n">${t('In')} (${L})</th><th class="n">${t('Out')} (${L})</th><th class="n">${t('Bought')} ₹</th><th class="n">${t('Sold')} ₹</th></tr></thead>
         <tbody>${r.daily.map((d) => `<tr><td>${fmtDate(d.date)}</td><td class="n">${qty(d.qty_in)}</td><td class="n">${qty(d.qty_out)}</td><td class="n">${money(d.bought)}</td><td class="n">${money(d.sold)}</td></tr>`).join('')}</tbody>
-      </table></div>` : '<div class="empty">No milk entries in this period.</div>'}
+      </table></div>` : empty('No milk entries in this period.')}
     </div>`;
-  wireRange(main, (f, t) => { sessionStorage.setItem('rf', f); sessionStorage.setItem('rt', t); pageReports(f, t); });
+  wireRange(main, (f, tt) => { sessionStorage.setItem('rf', f); sessionStorage.setItem('rt', tt); pageReports(f, tt); });
   $('#print').onclick = () => window.print();
 }
 
@@ -1266,55 +1317,64 @@ async function pageReports(from, to) {
 async function pageSettings() {
   const main = shell('settings', 'Settings');
   const s = await loadSettings();
+  const typeName = (ty) => (ty === 'cow' ? '🐄 ' + t('Cow') : '🐃 ' + t('Buffalo'));
   main.innerHTML = `
-    <div class="page-head"><h1>Settings</h1></div>
+    <div class="page-head"><h1>${t('Settings')}</h1></div>
     <div class="cols">
       <form class="card" id="fs">
-        <h2>Dairy details</h2>
+        <h2>${t('Dairy details')}</h2>
         <div class="grid">
-          ${field('Dairy name', `<input name="dairy_name" value="${esc(s.dairy_name)}" required>`)}
-          ${field('Phone (shown to customers)', `<input name="dairy_phone" value="${esc(s.dairy_phone)}">`)}
-          ${field('Address', `<input name="dairy_address" value="${esc(s.dairy_address)}">`)}
+          ${field(t('Dairy name'), `<input name="dairy_name" value="${esc(s.dairy_name)}" required>`)}
+          ${field(t('Phone (shown to customers)'), `<input name="dairy_phone" value="${esc(s.dairy_phone)}">`)}
+          ${field(t('Address'), `<input name="dairy_address" value="${esc(s.dairy_address)}">`)}
         </div>
-        <h2 style="margin:16px 0 12px">Milk buying rates</h2>
-        ${['cow', 'buffalo'].map((t) => `
+        <h2 style="margin:16px 0 12px">${t('Milk buying rates')}</h2>
+        ${['cow', 'buffalo'].map((ty) => `
           <div class="grid two">
-            ${field(`${t === 'cow' ? '🐄 Cow' : '🐃 Buffalo'} rate type`, `<select name="${t}_rate_mode"><option value="liter">Fixed ₹ per litre</option><option value="fat" ${s[`${t}_rate_mode`] === 'fat' ? 'selected' : ''}>₹ per fat point (rate × fat)</option></select>`)}
-            ${field('Rate ₹', `<input name="${t}_rate" type="number" step="0.01" min="0" value="${esc(s[`${t}_rate`])}">`)}
+            ${field(`${typeName(ty)} – ${t('rate type')}`, `<select name="${ty}_rate_mode"><option value="liter">${t('Fixed ₹ per litre')}</option><option value="fat" ${s[`${ty}_rate_mode`] === 'fat' ? 'selected' : ''}>${t('₹ per fat point (rate × fat)')}</option></select>`)}
+            ${field(t('Rate ₹'), `<input name="${ty}_rate" type="number" step="0.01" min="0" value="${esc(s[`${ty}_rate`])}">`)}
           </div>`).join('')}
-        <p class="sub">Example: fat type with ₹7.50 and fat 6.5 → ₹48.75 per litre.</p>
-        <h2 style="margin:16px 0 12px">Local selling rates (₹ per litre)</h2>
+        <p class="sub">${t('Example: fat type with ₹7.50 and fat 6.5 → ₹48.75 per litre.')}</p>
+        <h2 style="margin:16px 0 12px">${t('Local selling rates (₹ per litre)')}</h2>
         <div class="grid two">
-          ${field('🐄 Cow', `<input name="cow_sale_rate" type="number" step="0.01" min="0" value="${esc(s.cow_sale_rate)}">`)}
-          ${field('🐃 Buffalo', `<input name="buffalo_sale_rate" type="number" step="0.01" min="0" value="${esc(s.buffalo_sale_rate)}">`)}
+          ${field(typeName('cow'), `<input name="cow_sale_rate" type="number" step="0.01" min="0" value="${esc(s.cow_sale_rate)}">`)}
+          ${field(typeName('buffalo'), `<input name="buffalo_sale_rate" type="number" step="0.01" min="0" value="${esc(s.buffalo_sale_rate)}">`)}
         </div>
-        <h2 style="margin:16px 0 12px">Starting balances (when you began using the app)</h2>
+        <h2 style="margin:16px 0 12px">${t('Starting balances (when you began using the app)')}</h2>
         <div class="grid two">
-          ${field('💵 Cash in hand', `<input name="opening_cash" type="number" step="0.01" value="${esc(s.opening_cash)}">`)}
-          ${field('📱 Bank / online', `<input name="opening_bank" type="number" step="0.01" value="${esc(s.opening_bank)}">`)}
-          ${field('🐄 Cow milk in storage (L)', `<input name="opening_stock_cow" type="number" step="0.01" value="${esc(s.opening_stock_cow)}">`)}
-          ${field('🐃 Buffalo milk in storage (L)', `<input name="opening_stock_buffalo" type="number" step="0.01" value="${esc(s.opening_stock_buffalo)}">`)}
+          ${field('💵 ' + t('Cash in hand'), `<input name="opening_cash" type="number" step="0.01" value="${esc(s.opening_cash)}">`)}
+          ${field('📱 ' + t('Bank / online'), `<input name="opening_bank" type="number" step="0.01" value="${esc(s.opening_bank)}">`)}
+          ${field(t('Cow milk in storage (L)'), `<input name="opening_stock_cow" type="number" step="0.01" value="${esc(s.opening_stock_cow)}">`)}
+          ${field(t('Buffalo milk in storage (L)'), `<input name="opening_stock_buffalo" type="number" step="0.01" value="${esc(s.opening_stock_buffalo)}">`)}
         </div>
-        <button class="btn block" type="submit">Save settings</button>
+        <button class="btn block" type="submit">${t('Save settings')}</button>
       </form>
       <div>
         <div class="card">
-          <h2>Customer login</h2>
-          <p>Customers open <b>${esc(location.origin)}</b> on their phone and log in with their <b>mobile number + PIN</b>. Set the PIN in People → person → Edit.</p>
-          <button class="btn ghost" id="copy">📋 Copy link</button>
+          <h2>${t('Language')}</h2>
+          <div class="row-actions">
+            <button class="btn ${getLang() === 'en' ? '' : 'plain'}" data-lang="en">English</button>
+            <button class="btn ${getLang() === 'pa' ? '' : 'plain'}" data-lang="pa">ਪੰਜਾਬੀ</button>
+          </div>
+          <p class="sub">${t('Each phone remembers its own language. Customers can also switch on their login page.')}</p>
+        </div>
+        <div class="card">
+          <h2>${t('Customer login')}</h2>
+          <p>${t('Customers open {link} on their phone and log in with their mobile number + PIN. Set the PIN in People → person → Edit.', { link: `<b>${esc(location.origin)}</b>` })}</p>
+          <button class="btn ghost" id="copy">📋 ${t('Copy link')}</button>
         </div>
         <form class="card" id="fpw">
-          <h2>Change owner password</h2>
+          <h2>${t('Change owner password')}</h2>
           <div class="grid">
-            ${field('Current password', '<input name="old_password" type="password" required autocomplete="current-password">')}
-            ${field('New password', '<input name="new_password" type="password" minlength="4" required autocomplete="new-password">')}
+            ${field(t('Current password'), '<input name="old_password" type="password" required autocomplete="current-password">')}
+            ${field(t('New password'), '<input name="new_password" type="password" minlength="4" required autocomplete="new-password">')}
           </div>
-          <button class="btn" type="submit">Change password</button>
+          <button class="btn" type="submit">${t('Change password')}</button>
         </form>
         <div class="card">
-          <h2>Backup</h2>
-          <p class="sub">Download all your records as a file. Keep it safe (e.g. on Google Drive) every week.</p>
-          <button class="btn ghost" id="backup">⬇️ Download backup</button>
+          <h2>${t('Backup')}</h2>
+          <p class="sub">${t('Download all your records as a file. Keep it safe (e.g. on Google Drive) every week.')}</p>
+          <button class="btn ghost" id="backup">⬇️ ${t('Download backup')}</button>
         </div>
       </div>
     </div>`;
@@ -1344,41 +1404,42 @@ async function pagePortal(from, to) {
   const presets = rangePresets();
   from = from || presets[2][2];
   to = to || presets[2][3];
-  app.innerHTML = `<header class="topbar"><img class="logo" src="icon.svg" alt=""><div class="title">${esc(S.status.dairy_name)}</div><button id="out">Log out</button></header><main id="main"><div class="empty">Loading…</div></main>`;
+  app.innerHTML = `<header class="topbar"><img class="logo" src="icon.svg" alt=""><div class="title">${esc(S.status.dairy_name)}</div>${langBtn()}<button id="out">${t('Log out')}</button></header><main id="main">${empty('Loading…')}</main>`;
   $('#out').onclick = () => { location.hash = '#/logout'; };
   let d;
   try { d = await api('GET', `/api/portal?from=${from}&to=${to}`); } catch (e) { toast(e.message, true); return; }
   const p = d.party;
   const bal = p.balance;
-  const msg = Math.abs(bal) < 0.005 ? 'All settled 👍' : bal > 0 ? 'Dairy will pay you' : 'You have to pay the dairy';
+  const msg = Math.abs(bal) < 0.005 ? t('All settled 👍') : bal > 0 ? t('Dairy will pay you') : t('You have to pay the dairy');
   const milk = d.entries.filter((e) => e.kind === 'milk_in');
   const fatW = milk.filter((e) => e.fat);
   const avgFat = fatW.length ? (fatW.reduce((s, e) => s + e.fat * e.qty, 0) / fatW.reduce((s, e) => s + e.qty, 0)).toFixed(1) : null;
   const paid = d.entries.filter((e) => e.kind === 'pay_out').reduce((s, e) => s + e.debit, 0);
+  const L = t('L');
   const main = $('#main');
   main.style.paddingBottom = '32px';
   main.innerHTML = `
-    <div class="page-head"><div><h1>Hello, ${esc(p.name)} 🙏</h1><div class="sub">${[p.code ? 'Code ' + esc(p.code) : '', esc(p.village || '')].filter(Boolean).join(' · ')}</div></div></div>
+    <div class="page-head"><div><h1>${t('Hello, {name}', { name: esc(p.name) })} 🙏</h1><div class="sub">${[p.code ? t('Code') + ' ' + esc(p.code) : '', esc(p.village || '')].filter(Boolean).join(' · ')}</div></div></div>
     <div class="balance-card ${bal < 0 ? 'owe' : Math.abs(bal) < 0.005 ? 'zero' : ''}">
       <div class="lbl">${msg}</div>
       <div class="amt">${money(Math.abs(bal))}</div>
-      ${d.dairy.phone ? `<div class="meta"><a href="tel:${esc(d.dairy.phone)}">📞 Call dairy: ${esc(d.dairy.phone)}</a></div>` : ''}
+      ${d.dairy.phone ? `<div class="meta"><a href="tel:${esc(d.dairy.phone)}">📞 ${t('Call dairy:')} ${esc(d.dairy.phone)}</a></div>` : ''}
     </div>
     ${rangeBar(from, to)}
     <div class="grid four" style="margin-bottom:16px">
-      <div class="stat"><div class="k">🥛 Milk given</div><div class="v">${qty(d.milk_qty)} L</div><div class="s">${avgFat ? 'Avg fat ' + avgFat : '&nbsp;'}</div></div>
-      <div class="stat"><div class="k">Milk amount</div><div class="v">${money(d.milk_amount)}</div></div>
-      <div class="stat"><div class="k">🌾 Feed (cut)</div><div class="v">${money(d.feed_amount)}</div></div>
-      <div class="stat"><div class="k">💸 Paid to you</div><div class="v">${money(paid)}</div></div>
+      <div class="stat"><div class="k">🥛 ${t('Milk given')}</div><div class="v">${qty(d.milk_qty)} ${L}</div><div class="s">${avgFat ? t('Avg fat') + ' ' + avgFat : '&nbsp;'}</div></div>
+      <div class="stat"><div class="k">${t('Milk amount')}</div><div class="v">${money(d.milk_amount)}</div></div>
+      <div class="stat"><div class="k">🌾 ${t('Feed (cut)')}</div><div class="v">${money(d.feed_amount)}</div></div>
+      <div class="stat"><div class="k">💸 ${t('Paid to you')}</div><div class="v">${money(paid)}</div></div>
     </div>
-    ${milk.length ? `<div class="card"><h2>🥛 Daily milk</h2><div class="table-wrap"><table>
-      <thead><tr><th>Date</th><th class="n">Litres</th><th class="n">Fat</th><th class="n">Amount</th></tr></thead>
-      <tbody>${milk.slice().reverse().map((e) => `<tr><td style="white-space:nowrap">${fmtDate(e.date)} ${e.shift === 'morning' ? '🌅' : '🌇'}<br><span class="badge ${e.milk_type}">${e.milk_type}</span></td>
+    ${milk.length ? `<div class="card"><h2>🥛 ${t('Daily milk')}</h2><div class="table-wrap"><table>
+      <thead><tr><th>${t('Date')}</th><th class="n">${t('Litres')}</th><th class="n">${t('Fat')}</th><th class="n">${t('Amount')}</th></tr></thead>
+      <tbody>${milk.slice().reverse().map((e) => `<tr><td style="white-space:nowrap">${fmtDate(e.date)} ${e.shift === 'morning' ? '🌅' : '🌇'}<br>${typeBadge(e.milk_type)}</td>
         <td class="n">${qty(e.qty)}</td><td class="n">${e.fat ?? '–'}</td><td class="n">${money(e.credit)}<br><small class="sub">@ ₹${e.rate}</small></td></tr>`).join('')}</tbody>
-      <tfoot><tr><td>Total</td><td class="n">${qty(d.milk_qty)}</td><td></td><td class="n">${money(d.milk_amount)}</td></tr></tfoot>
+      <tfoot><tr><td>${t('Total')}</td><td class="n">${qty(d.milk_qty)}</td><td></td><td class="n">${money(d.milk_amount)}</td></tr></tfoot>
     </table></div></div>` : ''}
-    <div class="card"><h2>📒 Full account</h2>${ledgerTable(d)}</div>`;
-  wireRange(main, (f, t) => pagePortal(f, t));
+    <div class="card"><h2>📒 ${t('Full account')}</h2>${ledgerTable(d)}</div>`;
+  wireRange(main, (f, tt) => pagePortal(f, tt));
 }
 
 router();
